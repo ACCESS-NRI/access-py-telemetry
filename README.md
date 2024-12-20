@@ -1,4 +1,4 @@
-# intake-telemetry
+# ACCESS-NRI IPython Telemetry Extension
 
 In order to load this correctly within a Jupyter notebook (registering telemetry calls for all cells, not just after the execution of the first cell), it will be necessary to use an IPython startup script.
 See sample script below:

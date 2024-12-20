@@ -2,7 +2,7 @@
 
 """Tests for `intake_telemetry` package."""
 
-from intake_telemetry.intake_telemetry import SessionID
+from access_ipy_telemetry.access_ipy_telemetry import SessionID
 
 
 def test_session_id():

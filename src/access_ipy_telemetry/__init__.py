@@ -1,14 +1,14 @@
-"""Top-level package for intake-telemetry."""
+"""
+Copyright 2022 ACCESS-NRI and contributors. See the top-level COPYRIGHT file for details.
+SPDX-License-Identifier: Apache-2.0
+
+Top-level package for intake-telemetry.
+"""
 
 from IPython.core.getipython import get_ipython
 from IPython.core.interactiveshell import InteractiveShell
 
-from .intake_telemetry import capture_datastore_searches
-
-
-__author__ = """Charles Turner"""
-__email__ = "charles.turner@anu.edu.au"
-__version__ = "0.1.0"
+from .access_ipy_telemetry import capture_datastore_searches
 
 
 def load_ipython_extension(ipython: InteractiveShell) -> None:

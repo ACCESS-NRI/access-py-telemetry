@@ -1,4 +1,4 @@
-Welcome to intake-telemetry's documentation!
+Welcome to access-ipy-telemetry's documentation!
 ======================================
 
 .. toctree::

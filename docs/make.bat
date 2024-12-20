@@ -9,7 +9,7 @@ if "%SPHINXBUILD%" == "" (
 )
 set SOURCEDIR=.
 set BUILDDIR=_build
-set SPHINXPROJ=intake_telemetry
+set SPHINXPROJ=access_ipy_telemetry
 
 if "%1" == "" goto help
 

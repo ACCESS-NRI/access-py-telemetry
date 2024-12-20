@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 #
-# intake_telemetry documentation build configuration file, created by
+# access_ipy_telemetry documentation build configuration file, created by
 # sphinx-quickstart on Fri Jun  9 13:47:02 2017.
 #
 # This file is execfile()d with the current directory set to its
@@ -48,9 +48,9 @@ source_suffix = ".rst"
 master_doc = "index"
 
 # General information about the project.
-project = "intake-telemetry"
-copyright = "2024, Charles Turner"
-author = "Charles Turner"
+project = "access-ipy-telemetry"
+copyright = "2024, ACCESS-NRI"
+author = "ACCESS-NRI & Contributors"
 
 # The version info for the project you're documenting, acts as replacement
 # for |version| and |release|, also used in various other places throughout
@@ -102,7 +102,7 @@ html_static_path = ["_static"]
 # -- Options for HTMLHelp output ---------------------------------------
 
 # Output file base name for HTML help builder.
-htmlhelp_basename = "intake_telemetrydoc"
+htmlhelp_basename = "access_ipy_telemetrydoc"
 
 
 # -- Options for LaTeX output ------------------------------------------
@@ -128,8 +128,8 @@ latex_elements: dict[str, Any] = {
 latex_documents = [
     (
         master_doc,
-        "intake_telemetry.tex",
-        "intake-telemetry Documentation",
+        "access_ipy_telemetry.tex",
+        "access-ipy-telemetry Documentation",
         "Charles Turner",
         "manual",
     ),
@@ -141,7 +141,13 @@ latex_documents = [
 # One entry per manual page. List of tuples
 # (source start file, name, description, authors, manual section).
 man_pages = [
-    (master_doc, "intake_telemetry", "intake-telemetry Documentation", [author], 1)
+    (
+        master_doc,
+        "access_ipy_telemetry",
+        "access-ipy-telemetry Documentation",
+        [author],
+        1,
+    )
 ]
 
 
@@ -153,10 +159,10 @@ man_pages = [
 texinfo_documents = [
     (
         master_doc,
-        "intake_telemetry",
-        "intake-telemetry Documentation",
+        "access_ipy_telemetry",
+        "access-ipy-telemetry Documentation",
         author,
-        "intake_telemetry",
+        "access_ipy_telemetry",
         "One line description of project.",
         "Miscellaneous",
     ),

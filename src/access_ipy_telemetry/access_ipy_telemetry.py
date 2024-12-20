@@ -12,7 +12,7 @@ import warnings
 import os
 
 # TELEMETRY_SERVER_URL = "http://127.0.0.1:8000"
-TELEMETRY_SERVER_URL = "https://intake-telemetry-bb870061f91a.herokuapp.com"
+TELEMETRY_SERVER_URL = "https://access-ipy-telemetry-bb870061f91a.herokuapp.com"
 
 TELEMETRY_REGISTRED_FUNCTIONS = [
     "esm_datastore.search",

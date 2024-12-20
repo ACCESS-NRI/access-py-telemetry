@@ -2,7 +2,7 @@
 Copyright 2022 ACCESS-NRI and contributors. See the top-level COPYRIGHT file for details.
 SPDX-License-Identifier: Apache-2.0
 
-Top-level package for intake-telemetry.
+Top-level package for access-ipy-telemetry.
 """
 
 from IPython.core.getipython import get_ipython

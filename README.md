@@ -5,7 +5,7 @@ See sample script below:
 
 ```python
 try:
-    from intake_telemetry import capture_datastore_searches
+    from access_ipy_telemetry import capture_datastore_searches
     from IPython import get_ipython
 
     get_ipython().events.register("shell_initialized", capture_datastore_searches)
@@ -16,14 +16,14 @@ except ImportError:
 
 This needs to be added to the system config for ipython, or it can be added to your user config (`~/.ipython/profile_default/startup/`) for testing. See [Ipython documentation](https://ipython.readthedocs.io/en/stable/config/intro.html#systemwide-configuration) for more information.
 
-![PyPI version](https://img.shields.io/pypi/v/intake_telemetry.svg)
-![Build Status](https://img.shields.io/travis/charles-turner-1/intake_telemetry.svg)
-![Documentation Status](https://readthedocs.org/projects/intake-telemetry/badge/?version=latest)
+![PyPI version](https://img.shields.io/pypi/v/access_ipy_telemetry.svg)
+![Build Status](https://img.shields.io/travis/charles-turner-1/access_ipy_telemetry.svg)
+![Documentation Status](https://readthedocs.org/projects/access-ipy-telemetry/badge/?version=latest)
 
 Contains IPython extensions to automatically add telemetry to catalog usage.
 
 * Free software: Apache Software License 2.0
-* Documentation: https://intake-telemetry.readthedocs.io.
+* Documentation: https://access-ipy-telemetry.readthedocs.io.
 
 # Usage
 

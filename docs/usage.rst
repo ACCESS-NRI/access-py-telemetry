@@ -2,6 +2,6 @@
 Usage
 =====
 
-To use intake-telemetry in a project::
+To use access-ipy-telemetry in a project::
 
-    import intake_telemetry
+    import access_ipy_telemetry

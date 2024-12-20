@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-"""Tests for `intake_telemetry` package."""
+"""Tests for `access_ipy_telemetry` package."""
 
 from access_ipy_telemetry.access_ipy_telemetry import SessionID
 

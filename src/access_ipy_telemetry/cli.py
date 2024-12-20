@@ -1,4 +1,4 @@
-"""Console script for intake_telemetry."""
+"""Console script for access_ipy_telemetry."""
 
 import access_ipy_telemetry
 
@@ -13,7 +13,7 @@ console = Console()
 
 @app.command()  # type: ignore
 def main() -> None:
-    """Console script for intake_telemetry."""
+    """Console script for access_ipy_telemetry."""
     console.print(
         "Replace this message by putting your code into "
         "access_ipy_telemetry.cli.main"

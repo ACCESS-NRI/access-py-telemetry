@@ -12,7 +12,7 @@ import warnings
 import os
 
 # TELEMETRY_SERVER_URL = "http://127.0.0.1:8000"
-TELEMETRY_SERVER_URL = "https://access-ipy-telemetry-bb870061f91a.herokuapp.com"
+TELEMETRY_SERVER_URL = "https://tracking-services-d6c2fd311c12.herokuapp.com"
 
 TELEMETRY_REGISTRED_FUNCTIONS = [
     "esm_datastore.search",
@@ -164,6 +164,19 @@ def capture_datastore_searches(info: ExecutionInfo) -> None:
     tree = ast.parse(code)
     user_namespace: dict[str, Any] = get_ipython().user_ns  # type: ignore
 
+    # Temporary mapping for instances created in the same cell
+    temp_variable_types = {}
+
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Assign):  # Variable assignment
+            for target in node.targets:
+                if isinstance(target, ast.Name):
+                    var_name = target.id
+                    if isinstance(node.value, ast.Call):
+                        if isinstance(node.value.func, ast.Name):
+                            class_name = node.value.func.id
+                            temp_variable_types[var_name] = class_name
+
     for node in ast.walk(tree):
         func_name = None
         if isinstance(node, ast.Call):  # Calling a function or method
@@ -173,13 +186,17 @@ def capture_datastore_searches(info: ExecutionInfo) -> None:
             elif isinstance(node.func, ast.Attribute) and isinstance(
                 node.func.value, ast.Name
             ):  # It's a method call
+                breakpoint()
                 instance_name = node.func.value.id
                 method_name = node.func.attr
 
                 instance = user_namespace.get(instance_name)
                 if instance is not None:
                     class_name = instance.__class__.__name__
-                    func_name = f"{class_name}.{method_name}"
+                else:
+                    class_name = temp_variable_types.get(instance_name, "Unknown")
+
+                func_name = f"{class_name}.{method_name}"
 
             if func_name in TELEMETRY_REGISTRED_FUNCTIONS:
                 args = [ast.dump(arg) for arg in node.args]

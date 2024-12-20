@@ -29,6 +29,9 @@ dev = [
     "ruff"  # linting
 ]
 
+[project.scripts]
+intake-telemetry = "access_ipy_telemetry.cli:main"
+
 [project.urls]
 
 bugs = "https://github.com/ACCESS-NRI/access-ipy-telemetry/issues"

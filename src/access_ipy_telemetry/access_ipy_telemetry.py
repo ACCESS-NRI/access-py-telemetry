@@ -114,6 +114,7 @@ def send_api_request(
         async with httpx.AsyncClient() as client:
             try:
                 response = await client.post(endpoint, json=data, headers=headers)
+                print("Telemetry Posted!")
                 response.raise_for_status()
             except httpx.RequestError as e:
                 warnings.warn(
@@ -131,9 +132,13 @@ def send_api_request(
     if loop.is_running():
         loop.create_task(send_telemetry(telemetry_data))
     else:
-        breakpoint()
-        loop.create_task(send_telemetry(telemetry_data))
-        # loop.run_until_complete(send_telemetry(telemetry_data))
+        # breakpoint()
+        # loop.create_task(send_telemetry(telemetry_data))
+        loop.run_until_complete(send_telemetry(telemetry_data))
+        warnings.warn(
+            "Event loop not running, telemetry will block execution",
+            category=RuntimeWarning,
+        )
     return None
 
 
@@ -186,7 +191,6 @@ def capture_datastore_searches(info: ExecutionInfo) -> None:
             elif isinstance(node.func, ast.Attribute) and isinstance(
                 node.func.value, ast.Name
             ):  # It's a method call
-                breakpoint()
                 instance_name = node.func.value.id
                 method_name = node.func.attr
 

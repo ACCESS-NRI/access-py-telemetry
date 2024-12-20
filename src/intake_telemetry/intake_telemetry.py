@@ -1,11 +1,13 @@
 """Main module."""
 
+from typing import Any, TypeVar, Type
 import ast
 import hashlib
 import datetime
 import httpx
 import asyncio
-from IPython import get_ipython
+from IPython.core.getipython import get_ipython
+from IPython.core.interactiveshell import ExecutionInfo
 import warnings
 import os
 
@@ -17,6 +19,8 @@ TELEMETRY_REGISTRED_FUNCTIONS = [
     "DfFileCatalog.search",
     "DfFileCatalog.__getitem__",
 ]
+
+T = TypeVar("T", bound="SessionID")
 
 
 class SessionID:
@@ -30,27 +34,26 @@ class SessionID:
 
     Methods:
         __new__(cls, *args, **kwargs): Ensures only one instance of the class is created.
-        __init__(self): Initializes the instance and sets pandas options.
+        __init__(self): Initializes the instance.
         __get__(self, obj: object, objtype: type | None = None) -> str: Generates and returns the session ID.
         create_session_id() -> str: Static method to create a unique session ID.
     """
 
     _instance = None
 
-    def __new__(cls, *args, **kwargs):
+    def __new__(cls: Type[T]) -> T:
         if not cls._instance:
             cls._instance = super().__new__(cls)
         return cls._instance
 
-    def __init__(self):
+    def __init__(self) -> None:
         if hasattr(self, "initialized"):
             return None
-        self.set_pd_options()
         self.initialized = True
 
     def __get__(self, obj: object, objtype: type | None = None) -> str:
         if not hasattr(self, "value"):
-            self.value = create_session_id()
+            self.value = SessionID.create_session_id()
         return self.value
 
     @staticmethod
@@ -62,7 +65,12 @@ class SessionID:
         return session_id
 
 
-def send_api_request(function_name: str, args: list, kwargs: dict) -> None:
+def send_api_request(
+    function_name: str,
+    args: list[Any],
+    kwargs: dict[str, Any | None],
+    server_url: str = TELEMETRY_SERVER_URL,
+) -> None:
     """
     Send an API request with telemetry data.
 
@@ -99,9 +107,9 @@ def send_api_request(function_name: str, args: list, kwargs: dict) -> None:
         "session_id": SessionID(),
     }
 
-    endpoint = f"{TELEMETRY_SERVER_URL}/intake/update"
+    endpoint = f"{server_url}/intake/update"
 
-    async def send_telemetry(data):
+    async def send_telemetry(data: dict[str, Any]) -> None:
         headers = {"Content-Type": "application/json"}
         async with httpx.AsyncClient() as client:
             try:
@@ -111,6 +119,7 @@ def send_api_request(function_name: str, args: list, kwargs: dict) -> None:
                 warnings.warn(
                     f"Request failed: {e}", category=RuntimeWarning, stacklevel=2
                 )
+        return None
 
     # Check if there's an existing event loop, otherwise create a new one
     try:
@@ -128,7 +137,7 @@ def send_api_request(function_name: str, args: list, kwargs: dict) -> None:
     return None
 
 
-def capture_datastore_searches(info):
+def capture_datastore_searches(info: ExecutionInfo) -> None:
     """
     Use the AST module to parse the code that we are executing & send an API call
     if we detect specific function or method calls.
@@ -144,13 +153,16 @@ def capture_datastore_searches(info):
     """
     code = info.raw_cell
 
+    if code is None:
+        return None
+
     # Remove lines that contain IPython magic commands
     code = "\n".join(
         line for line in code.splitlines() if not line.strip().startswith("%")
     )
 
     tree = ast.parse(code)
-    user_namespace = get_ipython().user_ns
+    user_namespace: dict[str, Any] = get_ipython().user_ns  # type: ignore
 
     for node in ast.walk(tree):
         func_name = None
@@ -171,7 +183,11 @@ def capture_datastore_searches(info):
 
             if func_name in TELEMETRY_REGISTRED_FUNCTIONS:
                 args = [ast.dump(arg) for arg in node.args]
-                kwargs = {kw.arg: ast.literal_eval(kw.value) for kw in node.keywords}
+                kwargs = {
+                    kw.arg: ast.literal_eval(kw.value)
+                    for kw in node.keywords
+                    if kw.arg is not None  # Redundant check to make mypy happy
+                }
                 send_api_request(
                     func_name,
                     args,
@@ -188,15 +204,4 @@ def capture_datastore_searches(info):
 
             if func_name in TELEMETRY_REGISTRED_FUNCTIONS:
                 send_api_request(func_name, args=[index], kwargs={})
-
-
-def create_session_id():
-    """
-    Generate a session ID by hashing the login name and the current timestamp.
-    """
-
-    login = os.getlogin()
-    timestamp = datetime.datetime.now().isoformat()
-    session_str = f"{login}_{timestamp}"
-    session_id = hashlib.sha256((session_str).encode()).hexdigest()
-    return session_id
+    return None

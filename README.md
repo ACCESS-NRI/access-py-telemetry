@@ -25,27 +25,21 @@ Contains IPython extensions to automatically add telemetry to catalog usage.
 * Free software: Apache Software License 2.0
 * Documentation: https://intake-telemetry.readthedocs.io.
 
+# Usage
+
+
+
 ## Features
 
 * TODO
 
+___
 ## Credits
 
-This package was created with [Cookiecutter](https://github.com/audreyr/cookiecutter) and the [`audreyr/cookiecutter-pypackage`](https://github.com/audreyr/cookiecutter-pypackage) project template.# General Repository Template
+This package was created with [Cookiecutter](https://github.com/audreyr/cookiecutter) and the [`audreyr/cookiecutter-pypackage`](https://github.com/audreyr/cookiecutter-pypackage) project template.
 
-A general template repository for default settings when creating new repositories.
-
-This repository uses the Apache-2.0 license. `COPYRIGHT.txt` contains a current copyright statement which should be included at the top of all files.
-
-When creating a new repository you [can use this repository as a template](https://docs.github.com/en/repositories/creating-and-managing-repositories/creating-a-repository-from-a-template), to automate the creation of the correct license and COPYRIGHT statement.
-
+___
 ## COPYRIGHT Header
-
-Best practice suggests adding a copyright statement at the top of every source code file, or text file where it is possible to add a copyright statement without interfering with the purpose of the file. The reasoning is if a file is separated from the repository in which it resides then it may not be possible to ascertain it's licensing, which may hamper re-use.
-
-Making this as short and concise as possible reduces the overhead in including such a copyright statement. To that end using [SPDX identifiers](https://spdx.dev/ids/) is simple, efficient, portable and machine-readable.
-
-### Examples
 
 An example, short, copyright statement is reproduced below, as it might appear in different coding languages. Copy and add to files as appropriate: 
 

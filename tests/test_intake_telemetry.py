@@ -2,23 +2,20 @@
 
 """Tests for `intake_telemetry` package."""
 
-import pytest
+from intake_telemetry.intake_telemetry import SessionID
 
 
-from intake_telemetry import intake_telemetry
-
-
-@pytest.fixture
-def response():
-    """Sample pytest fixture.
-
-    See more at: http://doc.pytest.org/en/latest/fixture.html
+def test_session_id():
     """
-    # import requests
-    # return requests.get('https://github.com/audreyr/cookiecutter-pypackage')
+    Check that the SessionID class is a lazily evaluated singleton.
+    """
+    id1 = SessionID()
+    id2 = SessionID()
 
+    assert id1 is id2
 
-def test_content(response):
-    """Sample pytest test function with the pytest fixture as an argument."""
-    # from bs4 import BeautifulSoup
-    # assert 'GitHub' in BeautifulSoup(response.content).title.string
+    assert type(id1) is str
+
+    assert len(id1) == 64
+
+    assert id1 != SessionID.create_session_id()

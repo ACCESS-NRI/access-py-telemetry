@@ -16,6 +16,18 @@ S = TypeVar("S", bound="SessionID")
 H = TypeVar("H", bound="ApiHandler")
 T = TypeVar("T", bound="TelemetryRegister")
 
+ENDPOINTS = {
+    "catalog": "/intake/update",
+}
+
+REGISTRIES = {
+    "catalog": {
+        "esm_datastore.search",
+        "DfFileCatalog.search",
+        "DfFileCatalog.__getitem__",
+    }
+}
+
 
 class ApiHandler:
     """
@@ -39,9 +51,7 @@ class ApiHandler:
         if hasattr(self, "initialized"):
             return None
         self._server_url = "https://tracking-services-d6c2fd311c12.herokuapp.com"
-        self.endpoints = {
-            "catalog": "/intake/update",
-        }
+        self.endpoints = ENDPOINTS
         self._extra_fields: dict[str, dict[str, Any]] = {
             ep_name: {} for ep_name in self.endpoints.keys()
         }
@@ -78,7 +88,7 @@ class ApiHandler:
 
     def send_api_request(
         self,
-        endpoint: str,
+        service_name: str,
         function_name: str,
         args: list[Any],
         kwargs: dict[str, Any | None],
@@ -121,15 +131,17 @@ class ApiHandler:
             "args": args,
             "kwargs": kwargs,
             "session_id": SessionID(),
-            **self.extra_fields[endpoint],
+            **self.extra_fields[service_name],
         }
 
         self._last_post = telemetry_data
 
         try:
-            endpoint = self.endpoints[endpoint]
+            endpoint = self.endpoints[service_name]
         except KeyError as e:
-            raise KeyError(f"Endpoint {endpoint} not found in {self.endpoints}") from e
+            raise KeyError(
+                f"Endpoint for '{service_name}' not found in {self.endpoints}"
+            ) from e
 
         endpoint = f"{self.server_url}{endpoint}"
 
@@ -137,7 +149,9 @@ class ApiHandler:
             headers = {"Content-Type": "application/json"}
             async with httpx.AsyncClient() as client:
                 try:
-                    response = await client.post(endpoint, json=data, headers=headers)
+                    response = await client.post(
+                        service_name, json=data, headers=headers
+                    )
                     print("Telemetry Posted!")
                     response.raise_for_status()
                 except httpx.RequestError as e:
@@ -213,6 +227,9 @@ class TelemetryRegister:
     Singleton class to register functions for telemetry. Like the session handler,
     this class is going to be a singleton so that we can register functions to it
     from anywhere and have them persist across all telemetry calls.
+
+    This doesn't actually work - we are going to need one registry per service, so
+    we can't use a singleton here. We'll need to refactor this later.
     """
 
     # Set of registered functions for now - we can add more later or dynamically
@@ -223,17 +240,19 @@ class TelemetryRegister:
         "DfFileCatalog.__getitem__",
     }
 
-    _instance = None
+    _instances: dict[str, "TelemetryRegister"] = {}
 
-    def __new__(cls: Type[T]) -> T:
-        if not cls._instance:
-            cls._instance = super().__new__(cls)
-        return cls._instance
+    def __new__(cls: Type[T], service: str) -> T:
+        if not cls._instances.get(service, False):
+            cls._instances[service] = super().__new__(cls)
+        return cls._instances[service]  # type: ignore
 
-    def __init__(self) -> None:
+    def __init__(self, service: str) -> None:
         if hasattr(self, "initialized"):
             return None
         self.initialized = True
+        self.service = service
+        self.TELEMETRY_REGISTERED_FUNCTIONS = REGISTRIES.get(service, set())
 
     def __str__(self) -> str:
         return str(list(self.TELEMETRY_REGISTERED_FUNCTIONS))
@@ -283,14 +302,18 @@ class TelemetryRegister:
         return None
 
 
-def access_telemetry_register(func: Callable[..., Any]) -> Callable[..., Any]:
+def access_telemetry_register(
+    func: Callable[..., Any], register: TelemetryRegister
+) -> Callable[..., Any]:
     """
-    Decorator to register a function with the telemetry register.
+    Decorator to register a function with the specified telemetry register.
 
     Parameters
     ----------
     func : Callable
         The function to register.
+    register : TelemetryRegister
+        The telemetry register to use.
 
     Returns
     -------

@@ -15,7 +15,7 @@ api_handler = ApiHandler()
 telemetry_register = TelemetryRegister()
 
 
-def capture_datastore_searches(info: ExecutionInfo) -> None:
+def capture_registered_calls(info: ExecutionInfo) -> None:
     """
     Use the AST module to parse the code that we are executing & send an API call
     if we detect specific function or method calls.

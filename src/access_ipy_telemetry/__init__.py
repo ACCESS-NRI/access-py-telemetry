@@ -8,7 +8,7 @@ Top-level package for access-ipy-telemetry.
 from IPython.core.getipython import get_ipython
 from IPython.core.interactiveshell import InteractiveShell
 
-from .access_ipy_telemetry import capture_datastore_searches
+from .access_ipy_telemetry import capture_registered_calls
 from .utils import SessionID
 
 SessionID  # Shut up the linter
@@ -18,7 +18,7 @@ def load_ipython_extension(ipython: InteractiveShell) -> None:
     """
     Load the IPython extension and register it to run before cells.
     """
-    ipython.events.register("pre_run_cell", capture_datastore_searches)  # type: ignore
+    ipython.events.register("pre_run_cell", capture_registered_calls)  # type: ignore
     return None
 
 

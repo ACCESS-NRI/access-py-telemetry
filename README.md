@@ -125,13 +125,15 @@ my_service_name = "my_service"
 api_handler = ApiHandler()
 api_handler.add_extra_field(my_service_name, {"interesting_data": interesting_data})
 
-# NB: If you try to add extra fields to a sercie without an endpoint, it will raise an exception:
+# NB: If you try to add extra fields to a service without an endpoint, it will raise an exception:
 api_handler.add_extra_field("my_other_service", {"interesting_data": interesting_data})
 
 > KeyError: Endpoint 'my_other_service' not found. Please add an endpoint for this service.
 ```
 
-By default, the `ApiHandler` class will send telemetry to the endpoint specified in the `ACCESS_TELEMETRY_ENDPOINT` environment variable. If this is not set, it will default to the testing endpoint. If you visit the endpoint in your browser, you should see sent data, which will be of the format:
+The `ApiHandler` class will send telemetry data to the endpoint you specify.
+
+ If you visit the endpoint in your browser, you should see sent data, which will be of the format:
 ```json
 {
     "id": 1,

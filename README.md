@@ -59,7 +59,7 @@ Contains IPython extensions to automatically add telemetry to catalog usage.
 
 ### Registering & deregistering functions for telemetry
 
-To add a function to the list of functions to be called when telemetry is enabled, use the `register_telemetry` function. 
+To add a function to the list of functions about which usage information is collected when telemetry is enabled, use the `register_telemetry` function. 
 
 ```python
 from access_ipy_telemetry.utils import TelemetryRegister
@@ -73,7 +73,7 @@ You can additionally register a number of functions at once:
 registry.register(some_func, some_other_func, another_func)
 ``` 
 
-To remove a function from the list of functions to be called when telemetry is enabled, use the `deregister_telemetry` function. 
+To remove a function from the list of functions about which usage information is collected when telemetry is enabled, use the `deregister_telemetry` function. 
 
 ```python
 registry.deregister(some_func)
@@ -96,13 +96,19 @@ def my_func():
     pass
 ```
 
+### Checking registry
+```python
+>>> print(registry)
+["esm_datastore.search", "DfFileCatalog.search", "DfFileCatalog.__getitem__"]
+```
+
 ## Sending Telemetry
 ### Endpoints
 In order to send telemetry, you will need an endpoint in the [ACCESS-NRI Tracking Services](https://github.com/ACCESS-NRI/tracking-services) to send the telemetry to.
 
 If you do not have an endpoint, you can use the following endpoint for testing purposes:
 ```bash
-TBC
+TBA
 ```
 Presently, please raise an issue on the [tracking-services](https://github.com/ACCESS-NRI/tracking-services) repository to request an endpoint.
 
@@ -128,18 +134,18 @@ api_handler.add_extra_field("my_other_service", {"interesting_data": interesting
 By default, the `ApiHandler` class will send telemetry to the endpoint specified in the `ACCESS_TELEMETRY_ENDPOINT` environment variable. If this is not set, it will default to the testing endpoint. If you visit the endpoint in your browser, you should see sent data, which will be of the format:
 ```json
 {
-        "id": 1,
-        "timestamp": "2024-12-19T07:34:44.229048Z",
-        "name": "u1166368",
-        "function": "function_name",
-        "args": [],
-        "kwargs": {
-            "test": true,
-            "variable": "search"
-        },
-        "session_id": "83006a25092df6bae313f1e4b6be93f81e62205967fa5aa68fc4f1b081095299",
-        "interesting_data": interesting_data
+    "id": 1,
+    "timestamp": "2024-12-19T07:34:44.229048Z",
+    "name": "u1166368",
+    "function": "function_name",
+    "args": [],
+    "kwargs": {
+        "test": true,
+        "variable": "search"
     },
+    "session_id": "83006a25092df6bae313f1e4b6be93f81e62205967fa5aa68fc4f1b081095299",
+    "interesting_data": interesting_data
+},
 ```
 If you have not registered any extra fields, the `interesting_data` field will not be present. 
 
@@ -175,18 +181,18 @@ Then, when telemetry is sent, you will see the `component_1_config` and `compone
 
 ```json
 {
-        "id": 1,
-        "timestamp": "2024-12-19T07:34:44.229048Z",
-        "name": "u1166368",
-        "function": "function_name",
-        "args": [],
-        "kwargs": {
-            "test": true,
-            "variable": "search"
-        },
-        "session_id": "83006a25092df6bae313f1e4b6be93f81e62205967fa5aa68fc4f1b081095299",
-        "component_1_config": interesting_data_1,
-        "component_2_config": interesting_data_2,
+    "id": 1,
+    "timestamp": "2024-12-19T07:34:44.229048Z",
+    "name": "u1166368",
+    "function": "function_name",
+    "args": [],
+    "kwargs": {
+        "test": true,
+        "variable": "search"
+    },
+    "session_id": "83006a25092df6bae313f1e4b6be93f81e62205967fa5aa68fc4f1b081095299",
+    "component_1_config": interesting_data_1,
+    "component_2_config": interesting_data_2,
 }
 ```
 

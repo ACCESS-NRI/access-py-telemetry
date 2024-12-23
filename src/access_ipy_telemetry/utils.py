@@ -3,7 +3,7 @@ Copyright 2022 ACCESS-NRI and contributors. See the top-level COPYRIGHT file for
 SPDX-License-Identifier: Apache-2.0
 """
 
-from typing import Any, Type, TypeVar, Iterator
+from typing import Any, Type, TypeVar, Iterator, Callable
 import warnings
 import os
 import datetime
@@ -57,14 +57,14 @@ class ApiHandler:
         return None
 
     @pydantic.validate_call
-    def add_extra_field(self, endpoint: str, field: dict[str, Any]) -> None:
+    def add_extra_field(self, service_name: str, field: dict[str, Any]) -> None:
         """
         Add an extra field to the telemetry data. Only works for endpoints that
         are already defined.
         """
-        if endpoint not in self.endpoints:
-            raise KeyError(f"Endpoint {endpoint} not found")
-        self._extra_fields[endpoint] = field
+        if service_name not in self.endpoints:
+            raise KeyError(f"Endpoint '{service_name}' not found")
+        self._extra_fields[service_name] = field
         return None
 
     @property
@@ -215,6 +215,8 @@ class TelemetryRegister:
     from anywhere and have them persist across all telemetry calls.
     """
 
+    # Set of registered functions for now - we can add more later or dynamically
+    # using the register method.
     TELEMETRY_REGISTERED_FUNCTIONS = {
         "esm_datastore.search",
         "DfFileCatalog.search",
@@ -279,3 +281,26 @@ class TelemetryRegister:
         for func in func_names:
             self.TELEMETRY_REGISTERED_FUNCTIONS.remove(func)
         return None
+
+
+def access_telemetry_register(func: Callable[..., Any]) -> Callable[..., Any]:
+    """
+    Decorator to register a function with the telemetry register.
+
+    Parameters
+    ----------
+    func : Callable
+        The function to register.
+
+    Returns
+    -------
+    Callable
+        The function with the telemetry decorator.
+    """
+
+    def wrapper(*args: Any, **kwargs: Any) -> Any:
+        telemetry_register = TelemetryRegister()
+        telemetry_register.register(func.__name__)
+        return func(*args, **kwargs)
+
+    return wrapper

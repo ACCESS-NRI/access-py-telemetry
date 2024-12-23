@@ -43,7 +43,7 @@ def test_telemetry_configure_helpmsg(home, test_dir, capsys):
     output = capsys.readouterr()
 
     assert (
-        "[-h] [--disable] [--enable] [--status]\n\nConfigure ipython telemetry.\n\noptions:\n  -h, --help  show this help message and exit\n  --disable   Disable telemetry.\n  --enable    Enable telemetry.\n  --status    Check telemetry status.\n\n"
+        "[-h] [--disable] [--enable] [--status] [--silent]\n\nConfigure ipython telemetry.\n\noptions:\n  -h, --help  show this help message and exit\n  --disable   Disable telemetry.\n  --enable    Enable telemetry.\n  --status    Check telemetry status.\n  --silent    Suppress output.\n"
         in output.out
     )
 

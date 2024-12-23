@@ -8,7 +8,9 @@ Top-level package for access-ipy-telemetry.
 from IPython.core.getipython import get_ipython
 from IPython.core.interactiveshell import InteractiveShell
 
-from .access_ipy_telemetry import capture_datastore_searches
+from .access_ipy_telemetry import SessionID, capture_datastore_searches
+
+SessionID  # Shut up the linter
 
 
 def load_ipython_extension(ipython: InteractiveShell) -> None:

@@ -10,7 +10,7 @@ from pathlib import Path
 PACKAGE_ROOT = Path(access_ipy_telemetry.__file__).parent.parent.parent
 
 
-def main(argv: Sequence[str] | None = None) -> int:
+def configure_telemetry(argv: Sequence[str] | None = None) -> int:
     """Console script for configuring ipython telemetry."""
     parser = argparse.ArgumentParser(description="Configure ipython telemetry.")
     parser.add_argument("--disable", action="store_true", help="Disable telemetry.")
@@ -41,7 +41,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     if args.status:
         if telem_file_exists and filecmp.cmp(telemetry_fname, template_file):
-            print("Telemetry enabled")
+            print("Telemetry enabled.")
         elif telem_file_exists and not filecmp.cmp(telemetry_fname, template_file):
             print(
                 "Telemetry enabled but misconfigured. Run `access_ipy_telemetry --disable && access_ipy_telemetry --enable` to fix."
@@ -63,6 +63,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             print("Telemetry already enabled.")
             return 0
 
+        if not telemetry_fname.parent.exists():
+            telemetry_fname.parent.mkdir(parents=True)
         copy2(template_file, telemetry_fname)
         print("Telemetry enabled.")
 
@@ -70,4 +72,4 @@ def main(argv: Sequence[str] | None = None) -> int:
 
 
 if __name__ == "__main__":
-    main()
+    configure_telemetry()

@@ -99,3 +99,10 @@ def test_telemetry_register():
 
     with pytest.raises(ValidationError):
         session1.deregister(1.0, 2.0, [3.0])
+
+    session3 = TelemetryRegister("catalog")
+
+    assert set(session3) == {
+        "esm_datastore.search",
+        "DfFileCatalog.search",
+    }

@@ -12,14 +12,15 @@ import httpx
 import asyncio
 import pydantic
 import yaml
+from pathlib import Path
 
 S = TypeVar("S", bound="SessionID")
 H = TypeVar("H", bound="ApiHandler")
 
-with open("registries.yaml", "r") as f:
-    REGISTRIES = yaml.safe_load(f)
+with open(Path(__file__).parent / "config.yaml", "r") as f:
+    config = yaml.safe_load(f)
 
-ENDPOINTS = {registry: registry.get("endpoint") for registry in REGISTRIES}
+ENDPOINTS = {registry: content.get("endpoint") for registry, content in config.items()}
 
 
 class ApiHandler:
@@ -34,15 +35,16 @@ class ApiHandler:
     _instance = None
 
     def __new__(cls: Type[H]) -> H:
-        if not cls._instance:
+        if cls._instance is None:
             cls._instance = super().__new__(cls)
         return cls._instance
 
     def __init__(
         self,
     ) -> None:
-        if hasattr(self, "initialized"):
+        if hasattr(self, "_initialized"):
             return None
+        self._initialized = True
         self._server_url = "https://tracking-services-d6c2fd311c12.herokuapp.com"
         self.endpoints = ENDPOINTS
         self._extra_fields: dict[str, dict[str, Any]] = {

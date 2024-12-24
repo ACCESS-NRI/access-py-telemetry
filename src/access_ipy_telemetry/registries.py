@@ -4,23 +4,17 @@ SPDX-License-Identifier: Apache-2.0
 """
 
 from typing import Any, Type, TypeVar, Iterator, Callable
+from pathlib import Path
 import pydantic
 import yaml
 
 T = TypeVar("T", bound="TelemetryRegister")
 
-with open("registries.yaml", "r") as f:
-    REGISTRIES = yaml.safe_load(f)
-
-REGISTRIES = {registry: registry.get("items") for registry in REGISTRIES}
-
+with open(Path(__file__).parent / "config.yaml", "r") as f:
+    config = yaml.safe_load(f)
 
 REGISTRIES = {
-    "catalog": {
-        "esm_datastore.search",
-        "DfFileCatalog.search",
-        "DfFileCatalog.__getitem__",
-    }
+    registry: set(content.get("items")) for registry, content in config.items()
 }
 
 

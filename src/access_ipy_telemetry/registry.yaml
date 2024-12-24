@@ -1,0 +1,7 @@
+catalog:
+  endpoint: /intake/update
+  items:
+    - esm_datastore.search
+    - DfFileCatalog.search
+    - DfFileCatalog.__getitem__
+

@@ -5,13 +5,22 @@ SPDX-License-Identifier: Apache-2.0
 Top-level package for access-ipy-telemetry.
 """
 
+import warnings
 from IPython.core.getipython import get_ipython
 from IPython.core.interactiveshell import InteractiveShell
 
 from .access_ipy_telemetry import capture_registered_calls
-from .utils import SessionID
+from .api import SessionID, ENDPOINTS
+from .registries import REGISTRIES, RegisterWarning
 
 SessionID  # Shut up the linter
+
+# Make sure that our registries & endpoints match up
+if not set(REGISTRIES.keys()) == set(ENDPOINTS.keys()):
+    warnings.warn(
+        "Mismatch between registries and endpoints - some telemetry calls may not be recorded.",
+        category=RegisterWarning,
+    )
 
 
 def load_ipython_extension(ipython: InteractiveShell) -> None:

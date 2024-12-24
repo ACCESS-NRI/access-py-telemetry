@@ -8,11 +8,13 @@ import ast
 from IPython.core.getipython import get_ipython
 from IPython.core.interactiveshell import ExecutionInfo
 
-from .utils import ApiHandler, TelemetryRegister
+from .api import ApiHandler
+from .registries import TelemetryRegister, REGISTRIES
 
 
 api_handler = ApiHandler()
-telemetry_register = TelemetryRegister()
+
+registries = {registry: TelemetryRegister(registry) for registry in REGISTRIES.keys()}
 
 
 def capture_registered_calls(info: ExecutionInfo) -> None:
@@ -75,19 +77,20 @@ def capture_registered_calls(info: ExecutionInfo) -> None:
 
                 func_name = f"{class_name}.{method_name}"
 
-            if func_name in telemetry_register:
-                args = [ast.dump(arg) for arg in node.args]
-                kwargs = {
-                    kw.arg: ast.literal_eval(kw.value)
-                    for kw in node.keywords
-                    if kw.arg is not None  # Redundant check to make mypy happy
-                }
-                api_handler.send_api_request(
-                    "catalog",
-                    func_name,
-                    args,
-                    kwargs,
-                )
+            for registry, registered_funcs in registries.items():
+                if func_name in registered_funcs:
+                    args = [ast.dump(arg) for arg in node.args]
+                    kwargs = {
+                        kw.arg: ast.literal_eval(kw.value)
+                        for kw in node.keywords
+                        if kw.arg is not None  # Redundant check to make mypy happy
+                    }
+                    api_handler.send_api_request(
+                        registry,
+                        func_name,
+                        args,
+                        kwargs,
+                    )
         elif isinstance(node, ast.Subscript) and isinstance(node.value, ast.Name):
             instance_name = node.value.id
             # Evaluate the instance to get its class name
@@ -97,8 +100,9 @@ def capture_registered_calls(info: ExecutionInfo) -> None:
                 index = ast.literal_eval(node.slice)
                 func_name = f"{class_name}.__getitem__"
 
-            if func_name in telemetry_register:
-                api_handler.send_api_request(
-                    "catalog", func_name, args=[index], kwargs={}
-                )
+            for registry, registered_funcs in registries.items():
+                if func_name in registry:
+                    api_handler.send_api_request(
+                        registry, func_name, args=[index], kwargs={}
+                    )
     return None

@@ -102,6 +102,26 @@ def my_func():
 ["esm_datastore.search", "DfFileCatalog.search", "DfFileCatalog.__getitem__"]
 ```
 
+### Updating the default registry
+
+When you are happy with your telemetry configuration, you can update the default registry with your custom registry. This should be done via a PR, in which you update the `registry.yaml` file with your addtional functionality to track:
+
+```yaml
+catalog:
+  endpoint: /intake/update
+  items:
+    - esm_datastore.search
+    - DfFileCatalog.search
+    - DfFileCatalog.__getitem__
+
++ my_service:
++     endpoint: /my_service/endpoint
++     items:
++         - my_service.my_func
++         - my_service.my_other_func
+```
+
+
 ## Sending Telemetry
 ### Endpoints
 In order to send telemetry, you will need an endpoint in the [ACCESS-NRI Tracking Services](https://github.com/ACCESS-NRI/tracking-services) to send the telemetry to.
@@ -131,7 +151,7 @@ api_handler.add_extra_field("my_other_service", {"interesting_data": interesting
 > KeyError: Endpoint 'my_other_service' not found. Please add an endpoint for this service.
 ```
 
-The `ApiHandler` class will send telemetry data to the endpoint you specify.
+The `ApiHandler` class will send telemetry data to the endpoint you specify. To send telemetry data, use the `ApiHandler.send_api_request()` method. 
 
  If you visit the endpoint in your browser, you should see sent data, which will be of the format:
 ```json
@@ -211,7 +231,7 @@ In order to track user sessions, this package uses a Session Identifier, generat
 
 ```
 
-Session Identifiers are unique to each python interpreter, and only change when the interpreter is restarted.
+Session Identifiers are unique to each python interpreter, and only change when the interpreter is restarted. 
 
 
 ___

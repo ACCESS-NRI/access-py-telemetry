@@ -99,7 +99,6 @@ If you plan to add telemetry to your library & it's main use case is within a Ju
 
 Otherwise, use the `register_func` decorator to register your functions. 
 
-___
 #### IPython
 
 
@@ -114,7 +113,6 @@ def my_func():
     pass
 ```
 
-___
 #### Python
 
 ```python
@@ -125,8 +123,6 @@ def my_func():
     pass
 ```
 
-___
-___
 
 ### Checking registry
 (Assuming `my_func` has been registered as above)

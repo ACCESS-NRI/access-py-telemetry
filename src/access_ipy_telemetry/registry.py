@@ -3,7 +3,7 @@ Copyright 2022 ACCESS-NRI and contributors. See the top-level COPYRIGHT file for
 SPDX-License-Identifier: Apache-2.0
 """
 
-from typing import Type, TypeVar, Iterator
+from typing import Type, TypeVar, Iterator, Callable, Any
 from pathlib import Path
 import pydantic
 import yaml
@@ -66,15 +66,18 @@ class TelemetryRegister:
         return iter(self.registry)
 
     @pydantic.validate_call
-    def register(self, *func_names: str) -> None:
+    def register(self, *func_names: str | Callable[..., Any]) -> None:
         """
         Register functions to the telemetry register.
 
 
         Parameters
         ----------
-        functions : Sequence[str]
+        func_names : Sequence[str | Callable]
             The name of the function to register. Can also be a list of function names.
+            If you pass a function, it will register the function by name, using
+            the __name__ attribute.
+
 
         Returns
         -------
@@ -82,11 +85,14 @@ class TelemetryRegister:
         """
 
         for func in func_names:
-            self.registry.add(func)
+            if isinstance(func, str):
+                self.registry.add(func)
+            else:
+                self.registry.add(func.__name__)
         return None
 
     @pydantic.validate_call
-    def deregister(self, *func_names: str) -> None:
+    def deregister(self, *func_names: str | Callable[..., Any]) -> None:
         """
         Deregister a function from the telemetry register.
 
@@ -94,11 +100,16 @@ class TelemetryRegister:
         ----------
         function_name : str
             The name of the function to deregister. Can also be a list of function names.
+            If you pass a function, it will deregister the function by name, using
+            the __name__ attribute.
 
         Returns
         -------
         None
         """
         for func in func_names:
-            self.registry.remove(func)
+            if isinstance(func, str):
+                self.registry.remove(func)
+            else:
+                self.registry.remove(func.__name__)
         return None

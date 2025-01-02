@@ -118,5 +118,5 @@ def test_telemetry_corrupted(home, test_dir, capsys):
     assert output_1.out == "Telemetry enabled.\n"
     assert (
         output_2.out
-        == "Telemetry enabled but misconfigured. Run `access_ipy_telemetry --disable && access_ipy_telemetry --enable` to fix.\n"
+        == "Telemetry enabled but misconfigured. Run `access-ipy-telemetry --disable && access-ipy-telemetry --enable` to fix.\n"
     )

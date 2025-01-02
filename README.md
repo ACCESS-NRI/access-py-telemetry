@@ -7,33 +7,42 @@ Documentation below is predominately catered to those interested in monitoring u
 In order to load this correctly within a Jupyter notebook (registering telemetry calls for all cells, not just after the execution of the first cell), it will be necessary to use an IPython startup script.
 You can use the provided CLI script to configure the telemetry setup.
 
-The `intake-telemetry` CLI script is used to enable, disable, and check the status of telemetry in your IPython environment. This script manages the IPython startup script that registers telemetry calls for all cells.
+The `access-ipy-telemetry` CLI script is used to enable, disable, and check the status of telemetry in your IPython environment. This script manages the IPython startup script that registers telemetry calls for all cells.
 It will add the following code to your IPython startup script:
 
 ```python
 try:
-    from access_ipy_telemetry import capture_datastore_searches
+    from access_ipy_telemetry import capture_registered_calls
     from IPython import get_ipython
-    get_ipython().events.register("shell_initialized", capture_datastore_searches)
+
+    get_ipython().events.register("shell_initialized", capture_registered_calls)
     print("Intake telemetry extension loaded")
 except ImportError as e:
     print("Intake telemetry extension not loaded")
     raise e
+
 ```
 
 If you are using the `conda/analysis3` environment, telemetry will be enabled by default. 
 
-To enable telemetry, run:
+To enable telemetry in a notebook or ipython repl, run:
 ```python
-!intake-telemetry --enable
+!access-ipy-telemetry --enable
 ```
-To disable telemetry, run:
+To disable telemetry in a notebook or ipython repl, run:
 ```python
-!intake-telemetry --disable
+!access-ipy-telemetry --disable
 ```
-To check the status of telemetry, run:
+To check the status of telemetry in a notebook or ipython repl, run:
 ```python
-!intake-telemetry --status
+!access-ipy-telemetry --status
+```
+
+The same commands can be run from the command line, to enable, disable, and check the status of telemetry in your IPython environment.
+```bash
+$ access-ipy-telemetry --enable
+$ access-ipy-telemetry --disable
+$ access-ipy-telemetry --status
 ```
 
 This needs to be added to the system config for ipython, or it can be added to your user config (`~/.ipython/profile_default/startup/`) for testing. See [Ipython documentation](https://ipython.readthedocs.io/en/stable/config/intro.html#systemwide-configuration) for more information.
@@ -59,18 +68,18 @@ Contains IPython extensions to automatically add telemetry to catalog usage.
 
 ### Registering & deregistering functions for telemetry
 
-To add a function to the list of functions about which usage information is collected when telemetry is enabled, use the `register_telemetry` function. 
+To add a function to the list of functions about which usage information is collected when telemetry is enabled, use the `register_telemetry` function. You can pass the function name as a string, or the function itself.
 
 ```python
-from access_ipy_telemetry.utils import TelemetryRegister
+from access_ipy_telemetry.registry import TelemetryRegister
 
-registry = TelemetryRegister()
-registry.register(some_func)
+registry = TelemetryRegister('my_service')
+registry.register('some_func')
 ```
 
-You can additionally register a number of functions at once:
+You can additionally register a number of functions at once, by passing either the functions or their names as strings:
 ```python
-registry.register(some_func, some_other_func, another_func)
+registry.register(some_func, 'some_other_func', another_func)
 ``` 
 
 To remove a function from the list of functions about which usage information is collected when telemetry is enabled, use the `deregister_telemetry` function. 
@@ -85,21 +94,49 @@ registry.deregister(some_func, some_other_func, another_func)
 
 ### Registering user defined functions
 
+If you plan to add telemetry to your library & it's main use case is within a Jupyter notebook, it is recommended to use the `ipy_register_func` decorator to register your functions. 
+
+
+Otherwise, use the `register_func` decorator to register your functions. 
+
+___
+#### IPython
+
+
 To register a user defined function, use the `access_telemetry_register` decorator. 
 
 ```python
 
-from access_ipy_telemetry.utils import access_telemetry_register
+from access_ipy_telemetry.decorators import ipy_register_func
 
-@access_telemetry_register
+@ipy_register_func("my_service")
 def my_func():
     pass
 ```
 
-### Checking registry
+___
+#### Python
+
 ```python
->>> print(registry)
+from access_ipy_telemetry.decorators import register_func
+
+@register_func("my_service",extra_fields=[{"interesting_data_1" : something}, {"interesting_data_2" : something_else}])
+def my_func():
+    pass
+```
+
+___
+___
+
+### Checking registry
+(Assuming `my_func` has been registered as above)
+```python
+>>> cat_registry = TelemetryRegister('catalog')
+>>> print(cat_registry)
 ["esm_datastore.search", "DfFileCatalog.search", "DfFileCatalog.__getitem__"]
+>>> my_registry = TelemetryRegister('my_service')
+>>> print(my_registry)
+["my_func"]
 ```
 
 ### Updating the default registry
@@ -117,8 +154,8 @@ catalog:
 + my_service:
 +     endpoint: /my_service/endpoint
 +     items:
-+         - my_service.my_func
-+         - my_service.my_other_func
++         - my_func
++         - my_other_func
 ```
 
 
@@ -139,7 +176,6 @@ from access_ipy_telemetry.utils import ApiHandler
 
 from xyz import interesting_data
 
-my_endpoint = "/my_service/endpoint"
 my_service_name = "my_service"
 
 api_handler = ApiHandler()

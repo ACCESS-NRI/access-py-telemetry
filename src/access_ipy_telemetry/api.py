@@ -21,6 +21,7 @@ with open(Path(__file__).parent / "config.yaml", "r") as f:
     config = yaml.safe_load(f)
 
 ENDPOINTS = {registry: content.get("endpoint") for registry, content in config.items()}
+SERVER_URL = "https://tracking-services-d6c2fd311c12.herokuapp.com"
 
 
 class ApiHandler:
@@ -45,7 +46,7 @@ class ApiHandler:
         if hasattr(self, "_initialized"):
             return None
         self._initialized = True
-        self._server_url = "https://tracking-services-d6c2fd311c12.herokuapp.com"
+        self._server_url = SERVER_URL
         self.endpoints = ENDPOINTS
         self._extra_fields: dict[str, dict[str, Any]] = {
             ep_name: {} for ep_name in self.endpoints.keys()
@@ -85,7 +86,7 @@ class ApiHandler:
         self,
         service_name: str,
         function_name: str,
-        args: list[Any],
+        args: list[Any] | tuple[Any, ...],
         kwargs: dict[str, Any | None],
     ) -> None:
         """
@@ -120,16 +121,9 @@ class ApiHandler:
         aren't. I've also modified __get__, so SessionID() evaluates to a string.
         """
 
-        telemetry_data = {
-            "name": os.getlogin(),
-            "function": function_name,
-            "args": args,
-            "kwargs": kwargs,
-            "session_id": SessionID(),
-            **self.extra_fields[service_name],
-        }
-
-        self._last_post = telemetry_data
+        telemetry_data = self._create_telemetry_record(
+            service_name, function_name, args, kwargs
+        )
 
         try:
             endpoint = self.endpoints[service_name]
@@ -173,6 +167,28 @@ class ApiHandler:
                 category=RuntimeWarning,
             )
         return None
+
+    def _create_telemetry_record(
+        self,
+        service_name: str,
+        function_name: str,
+        args: list[Any] | tuple[Any, ...],
+        kwargs: dict[str, Any],
+    ) -> dict[str, Any]:
+        """
+        Create and return a telemetry record, cache it as an instance attribute.
+        """
+        telemetry_data = {
+            "name": os.getlogin(),
+            "function": function_name,
+            "args": args,
+            "kwargs": kwargs,
+            "session_id": SessionID(),
+            **self.extra_fields[service_name],
+        }
+
+        self._last_record = telemetry_data
+        return telemetry_data
 
 
 class SessionID:

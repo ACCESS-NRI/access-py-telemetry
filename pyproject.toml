@@ -33,7 +33,7 @@ dev = [
 ]
 
 [project.scripts]
-intake-telemetry = "access_ipy_telemetry.cli:main"
+access-ipy-telemetry = "access_ipy_telemetry.cli:configure_telemetry"
 
 [project.urls]
 

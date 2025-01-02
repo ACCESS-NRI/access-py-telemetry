@@ -118,6 +118,32 @@ from access_ipy_telemetry.decorators import ipy_register_func
 def my_func():
     pass
 ```
+or 
+```python
+from access_ipy_telemetry.decorators import ipy_register_func
+
+@ipy_register_func("my_service", extra_fields=[
+    {"interesting_data_1" : something}, 
+    {"interesting_data_2" : something_else},
+])
+def my_func():
+    pass
+```
+Specifying the `extra_fields` argument will add additional fields to the telemetry data sent to the endpoint. Alternatively, these can be added later:
+```python
+
+from access_ipy_telemetry.utils import ApiHandler
+from access_ipy_telemetry.decorators import ipy_register_func
+
+@ipy_register_func("my_service")
+def my_func():
+    pass
+
+api_handler = ApiHandler()
+api_handler.add_extra_field("my_service", {"interesting_data": interesting_data})
+```
+
+Note: Wherever you instantiate the `ApiHandler` class, the same `ApiHandler` instance will be returned - you do not need to pass around a single ApiHandler instance to ensure consistency: See [Implementation details](#implementation-details) for more information.
 
 #### Python
 

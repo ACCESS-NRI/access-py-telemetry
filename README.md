@@ -68,7 +68,13 @@ Contains IPython extensions to automatically add telemetry to catalog usage.
 
 ### Registering & deregistering functions for telemetry
 
-To add a function to the list of functions about which usage information is collected when telemetry is enabled, use the `register_telemetry` function. You can pass the function name as a string, or the function itself.
+To add a function to the list of functions about which usage information is collected when telemetry is enabled, use the `TelemetryRegister` class, and it's `register` method. You can pass the function name as a string, or the function itself.
+
+> **Important** 
+> ___
+> Each `service` corresponds to a single `endpoint` in the tracking services app. 
+> This is something of a misnomer, and will eventually be renamed to something more appropriate.
+
 
 ```python
 from access_ipy_telemetry.registry import TelemetryRegister

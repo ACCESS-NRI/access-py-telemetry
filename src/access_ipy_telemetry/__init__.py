@@ -11,7 +11,7 @@ from IPython.core.interactiveshell import InteractiveShell
 
 from .access_ipy_telemetry import capture_registered_calls
 from .api import SessionID, ENDPOINTS
-from .registries import REGISTRIES, RegisterWarning
+from .registry import REGISTRIES, RegisterWarning
 
 SessionID  # Shut up the linter
 

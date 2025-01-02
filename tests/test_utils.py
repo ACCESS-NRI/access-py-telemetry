@@ -3,7 +3,7 @@
 """Tests for `access_ipy_telemetry` package."""
 
 from access_ipy_telemetry.api import SessionID, ApiHandler
-from access_ipy_telemetry.registries import TelemetryRegister
+from access_ipy_telemetry.registry import TelemetryRegister
 from pydantic import ValidationError
 import pytest
 

@@ -118,7 +118,10 @@ def my_func():
 ```python
 from access_ipy_telemetry.decorators import register_func
 
-@register_func("my_service",extra_fields=[{"interesting_data_1" : something}, {"interesting_data_2" : something_else}])
+@register_func("my_service",extra_fields=[
+    {"interesting_data_1" : something}, 
+    {"interesting_data_2" : something_else},
+])
 def my_func():
     pass
 ```

@@ -54,7 +54,7 @@ If this package is used within a Jupyter notebook, telemetry calls will be made 
 If you are using this in a REPL, telemetry calls are currently synchronous, and will block the execution of the code until the telemetry call is made. This will be fixed in a future release.
 
 ![PyPI version](https://img.shields.io/pypi/v/access_py_telemetry.svg)
-![Build Status](https://img.shields.io/travis/charles-turner-1/access_py_telemetry.svg)
+![Build Status](https://img.shields.io/travis/access-nri/access_py_telemetry.svg)
 ![Documentation Status](https://readthedocs.org/projects/access-py-telemetry/badge/?version=latest)
 
 Contains IPython extensions to automatically add telemetry to catalog usage.

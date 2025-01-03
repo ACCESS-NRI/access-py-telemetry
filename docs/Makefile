@@ -4,7 +4,7 @@
 # You can set these variables from the command line.
 SPHINXOPTS    =
 SPHINXBUILD   = python -msphinx
-SPHINXPROJ    = access_ipy_telemetry
+SPHINXPROJ    = access_py_telemetry
 SOURCEDIR     = .
 BUILDDIR      = _build
 

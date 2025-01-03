@@ -1,1 +1,1 @@
-"""Unit test package for access_ipy_telemetry."""
+"""Unit test package for access_py_telemetry."""

@@ -1,8 +1,8 @@
 #!/usr/bin/env python
 
-"""Tests for `access_ipy_telemetry` package."""
+"""Tests for `access_py_telemetry` package."""
 
-from access_ipy_telemetry.registry import TelemetryRegister
+from access_py_telemetry.registry import TelemetryRegister
 from pydantic import ValidationError
 import pytest
 

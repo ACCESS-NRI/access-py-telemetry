@@ -9,7 +9,7 @@ import warnings
 from IPython.core.getipython import get_ipython
 from IPython.core.interactiveshell import InteractiveShell
 
-from .access_ipy_telemetry import capture_registered_calls
+from .access_py_telemetry import capture_registered_calls
 from .api import SessionID, ENDPOINTS
 from .registry import REGISTRIES, RegisterWarning
 

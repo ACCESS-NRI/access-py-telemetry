@@ -13,6 +13,7 @@ def ipy_register_func(
     func: Callable[..., Any],
     service: str,
     extra_fields: Iterable[dict[str, Any]] | None = None,
+    pop_fields: Iterable[str] | None = None,
 ) -> Callable[..., Any]:
     """
     Decorator to register a function in the specified service and track usage
@@ -25,9 +26,12 @@ def ipy_register_func(
         The function to register.
     service : str
         The name of the telemetry register to use.
-    extra fields : Iterable[dict[str, Any]], optional
+    extra_fields : Iterable[dict[str, Any]], optional
         Extra fields to add to the telemetry record. These can also be added after
         the fact using the `add_extra_field` method.
+    pop_fields : Iterable[str], optional
+        Fields to remove from the telemetry record. This can be useful for removing
+        default fields that are not needed for a particular function
 
     Returns
     -------
@@ -37,8 +41,7 @@ def ipy_register_func(
 
     api_handler = ApiHandler()
 
-    extra_fields = extra_fields or []
-    for field in extra_fields:
+    for field in extra_fields or []:
         api_handler.add_extra_field(service, field)
 
     def wrapper(*args: Any, **kwargs: Any) -> Any:
@@ -53,6 +56,7 @@ def register_func(
     func: Callable[..., Any],
     service: str,
     extra_fields: Iterable[dict[str, Any]] | None = None,
+    pop_fields: Iterable[str] | None = None,
 ) -> Callable[..., Any]:
     """
     Decorator to register a function in the specified service and track usage
@@ -67,6 +71,9 @@ def register_func(
     extra fields : Iterable[dict[str, Any]], optional
         Extra fields to add to the telemetry record. These can also be added after
         the fact using the `add_extra_field` method.
+    pop_fields : Iterable[str], optional
+        Fields to remove from the telemetry record. This can be useful for removing
+        default fields that are not needed for a particular function.
 
     Returns
     -------
@@ -75,8 +82,7 @@ def register_func(
     """
     api_handler = ApiHandler()
 
-    extra_fields = extra_fields or []
-    for field in extra_fields:
+    for field in extra_fields or []:
         api_handler.add_extra_field(service, field)
 
     @wraps(func)
@@ -84,6 +90,9 @@ def register_func(
         telemetry_data = api_handler._create_telemetry_record(
             service, func.__name__, args, kwargs
         )
+
+        for field in pop_fields or []:
+            telemetry_data.pop(field)
 
         endpoint = Path(SERVER_URL) / api_handler.endpoints[service]
 

@@ -1,7 +1,7 @@
 import pytest
 from unittest import mock
 
-from access_ipy_telemetry.cli import configure_telemetry
+from access_py_telemetry.cli import configure_telemetry
 
 
 @pytest.fixture

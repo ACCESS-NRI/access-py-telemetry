@@ -49,7 +49,7 @@ clean-test: ## remove test and coverage artifacts
 	rm -fr .pytest_cache
 
 lint/flake8: ## check style with flake8
-	flake8 access_ipy_telemetry tests
+	flake8 access_py_telemetry tests
 
 
 lint: lint/flake8 ## check style
@@ -61,15 +61,15 @@ test-all: ## run tests on every Python version with tox
 	tox
 
 coverage: ## check code coverage quickly with the default Python
-	coverage run --source access_ipy_telemetry -m pytest
+	coverage run --source access_py_telemetry -m pytest
 	coverage report -m
 	coverage html
 	$(BROWSER) htmlcov/index.html
 
 docs: ## generate Sphinx HTML documentation, including API docs
-	rm -f docs/access_ipy_telemetry.rst
+	rm -f docs/access_py_telemetry.rst
 	rm -f docs/modules.rst
-	sphinx-apidoc -o docs/ access_ipy_telemetry
+	sphinx-apidoc -o docs/ access_py_telemetry
 	$(MAKE) -C docs clean
 	$(MAKE) -C docs html
 	$(BROWSER) docs/_build/html/index.html

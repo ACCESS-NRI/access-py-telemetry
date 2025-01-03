@@ -1,13 +1,13 @@
-"""Console script for access_ipy_telemetry."""
+"""Console script for access_py_telemetry."""
 
-import access_ipy_telemetry
+import access_py_telemetry
 from typing import Sequence
 from shutil import copy2
 import argparse
 import filecmp
 from pathlib import Path
 
-PACKAGE_ROOT = Path(access_ipy_telemetry.__file__).parent.parent.parent
+PACKAGE_ROOT = Path(access_py_telemetry.__file__).parent.parent.parent
 
 
 def configure_telemetry(argv: Sequence[str] | None = None) -> int:

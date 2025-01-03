@@ -1,18 +1,18 @@
-# ACCESS-NRI IPython Telemetry Extension
+# ACCESS-NRI Python/IPython Telemetry Extension
 
-This package contains IPython extensions to automatically add telemetry to catalog usage.
+This package contains IPython extensions to automatically add telemetry to Python usage.
 
 Documentation below is predominately catered to those interested in monitoring usage of their packages, and should allow to easily add telemetry to their code.
 
 In order to load this correctly within a Jupyter notebook (registering telemetry calls for all cells, not just after the execution of the first cell), it will be necessary to use an IPython startup script.
 You can use the provided CLI script to configure the telemetry setup.
 
-The `access-ipy-telemetry` CLI script is used to enable, disable, and check the status of telemetry in your IPython environment. This script manages the IPython startup script that registers telemetry calls for all cells.
+The `access-ipy-telemetry` CLI script is used to enable, disable, and check the status of telemetry in your IPython environment. This script manages the IPython startup script that registers telemetry calls for all notebook cells.
 It will add the following code to your IPython startup script:
 
 ```python
 try:
-    from access_ipy_telemetry import capture_registered_calls
+    from access_py_telemetry import capture_registered_calls
     from IPython import get_ipython
 
     get_ipython().events.register("shell_initialized", capture_registered_calls)
@@ -53,14 +53,14 @@ If this package is used within a Jupyter notebook, telemetry calls will be made 
 
 If you are using this in a REPL, telemetry calls are currently synchronous, and will block the execution of the code until the telemetry call is made. This will be fixed in a future release.
 
-![PyPI version](https://img.shields.io/pypi/v/access_ipy_telemetry.svg)
-![Build Status](https://img.shields.io/travis/charles-turner-1/access_ipy_telemetry.svg)
-![Documentation Status](https://readthedocs.org/projects/access-ipy-telemetry/badge/?version=latest)
+![PyPI version](https://img.shields.io/pypi/v/access_py_telemetry.svg)
+![Build Status](https://img.shields.io/travis/charles-turner-1/access_py_telemetry.svg)
+![Documentation Status](https://readthedocs.org/projects/access-py-telemetry/badge/?version=latest)
 
 Contains IPython extensions to automatically add telemetry to catalog usage.
 
 * Free software: Apache Software License 2.0
-* Documentation: https://access-ipy-telemetry.readthedocs.io.
+* Documentation: https://access-py-telemetry.readthedocs.io.
 
 # Usage
 
@@ -77,7 +77,7 @@ To add a function to the list of functions about which usage information is coll
 
 
 ```python
-from access_ipy_telemetry.registry import TelemetryRegister
+from access_py_telemetry.registry import TelemetryRegister
 
 registry = TelemetryRegister('my_service')
 registry.register('some_func')
@@ -112,43 +112,64 @@ To register a user defined function, use the `access_telemetry_register` decorat
 
 ```python
 
-from access_ipy_telemetry.decorators import ipy_register_func
+from access_py_telemetry.decorators import ipy_register_func
 
 @ipy_register_func("my_service")
 def my_func():
-    pass
+    ...
 ```
 or 
 ```python
-from access_ipy_telemetry.decorators import ipy_register_func
+from access_py_telemetry.decorators import ipy_register_func
 
 @ipy_register_func("my_service", extra_fields=[
     {"interesting_data_1" : something}, 
     {"interesting_data_2" : something_else},
 ])
 def my_func():
-    pass
+    ...
 ```
 Specifying the `extra_fields` argument will add additional fields to the telemetry data sent to the endpoint. Alternatively, these can be added later:
 ```python
 
-from access_ipy_telemetry.utils import ApiHandler
-from access_ipy_telemetry.decorators import ipy_register_func
+from access_py_telemetry.utils import ApiHandler
+from access_py_telemetry.decorators import ipy_register_func
 
 @ipy_register_func("my_service")
 def my_func():
-    pass
+    ...
 
 api_handler = ApiHandler()
 api_handler.add_extra_field("my_service", {"interesting_data": interesting_data})
 ```
+
+Adding fields later may sometimes be necessary, as the data may not be available at the time of registration/function definition, but will be when the function is called.
+
+We can also remove fields from the telemetry data, using the `pop_fields` method. This might be handy for example, if you want to remove a default field. For example, telemetry will include a session ID (bound to the Python interpreter lifetime) by default - if you are writing a CLI tool, you may want to remove this field.
+
+```python
+from access_py_telemetry.utils import ApiHandler
+from access_py_telemetry.decorators import register_func
+
+@register_func("my_service", extra_fields = [{"cli_config" : ...}, {"interesting_data" : ...}])
+def cli_execute():
+    """
+    Function to execute the CLI tool
+    """
+    ...
+
+api_handler = ApiHandler()
+api_handler.pop_fields("my_service", ["session_id"])
+```
+
+
 
 Note: Wherever you instantiate the `ApiHandler` class, the same `ApiHandler` instance will be returned - you do not need to pass around a single ApiHandler instance to ensure consistency: See [Implementation details](#implementation-details) for more information.
 
 #### Python
 
 ```python
-from access_ipy_telemetry.decorators import register_func
+from access_py_telemetry.decorators import register_func
 
 @register_func("my_service",extra_fields=[
     {"interesting_data_1" : something}, 
@@ -203,7 +224,7 @@ Presently, please raise an issue on the [tracking-services](https://github.com/A
 __Once you have an endpoint__, you can send telemetry using the `ApiHandler` class.
 
 ```python
-from access_ipy_telemetry.utils import ApiHandler
+from access_py_telemetry.utils import ApiHandler
 
 from xyz import interesting_data
 
@@ -246,7 +267,7 @@ The `ApiHandler` class is a singleton, so if you want to configure extra fields 
 
 eg. `myservice/component1.py`
 ```python
-from access_ipy_telemetry.utils import ApiHandler
+from access_py_telemetry.utils import ApiHandler
 api_handler = ApiHandler()
 
 service_component1_config = {
@@ -257,7 +278,7 @@ api_handler.add_extra_field("myservice", service_component1_config)
 ```
 and `myservice/component2.py`
 ```python
-from access_ipy_telemetry.utils import ApiHandler
+from access_py_telemetry.utils import ApiHandler
 api_handler = ApiHandler()
 
 service_component2_config = {
@@ -290,7 +311,7 @@ Then, when telemetry is sent, you will see the `component_1_config` and `compone
 
 In order to track user sessions, this package uses a Session Identifier, generated using the SessionID class:
 ```python
->>> from access_ipy_telemetry.utils import SessionID
+>>> from access_py_telemetry.utils import SessionID
 
 >>> session_id = SessionID()
 >>> session_id

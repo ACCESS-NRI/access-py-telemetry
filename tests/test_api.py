@@ -1,8 +1,8 @@
 #!/usr/bin/env python
 
-"""Tests for `access_ipy_telemetry` package."""
+"""Tests for `access_py_telemetry` package."""
 
-from access_ipy_telemetry.api import SessionID, ApiHandler
+from access_py_telemetry.api import SessionID, ApiHandler
 from pydantic import ValidationError
 import pytest
 

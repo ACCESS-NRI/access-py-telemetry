@@ -3,7 +3,7 @@ Copyright 2022 ACCESS-NRI and contributors. See the top-level COPYRIGHT file for
 SPDX-License-Identifier: Apache-2.0
 """
 
-from typing import Any, Type, TypeVar
+from typing import Any, Type, TypeVar, Iterable
 import warnings
 import os
 import datetime
@@ -51,6 +51,7 @@ class ApiHandler:
         self._extra_fields: dict[str, dict[str, Any]] = {
             ep_name: {} for ep_name in self.endpoints.keys()
         }
+        self._pop_fields: dict[str, list[str]] = {}
 
     @property
     def extra_fields(self) -> dict[str, Any]:
@@ -79,8 +80,25 @@ class ApiHandler:
 
     @server_url.setter
     def server_url(self, url: str) -> None:
+        """
+        Set the server URL for the telemetry API.
+        """
         self._server_url = url
         return None
+
+    @property
+    def pop_fields(self) -> dict[str, list[str]]:
+        return self._pop_fields
+
+    @pop_fields.setter
+    @pydantic.validate_call
+    def pop_fields(self, service: str, fields: Iterable[str]) -> None:
+        """
+        Set the fields to remove from the telemetry data for a given service. Useful for excluding default
+        fields that are not needed for a particular telemetry call: eg, removing
+        Session tracking if a CLI is being used.
+        """
+        self._pop_fields[service] = list(fields)
 
     def send_api_request(
         self,
@@ -186,6 +204,9 @@ class ApiHandler:
             "session_id": SessionID(),
             **self.extra_fields[service_name],
         }
+
+        for field in self._pop_fields:
+            telemetry_data.pop(field)
 
         self._last_record = telemetry_data
         return telemetry_data

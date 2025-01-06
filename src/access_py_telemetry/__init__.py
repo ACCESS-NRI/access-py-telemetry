@@ -9,11 +9,10 @@ import warnings
 from IPython.core.getipython import get_ipython
 from IPython.core.interactiveshell import InteractiveShell
 
-from .access_py_telemetry import capture_registered_calls
-from .api import SessionID, ENDPOINTS
+from .ast import capture_registered_calls
+from .api import SessionID, ENDPOINTS  # noqa
 from .registry import REGISTRIES, RegisterWarning
 
-SessionID  # Shut up the linter
 
 # Make sure that our registries & endpoints match up
 if not set(REGISTRIES.keys()) == set(ENDPOINTS.keys()):

@@ -4,15 +4,13 @@ from functools import wraps
 import httpx
 import warnings
 import asyncio
-from pathlib import Path
 
-from .api import SERVER_URL, ApiHandler
+from .api import ApiHandler
 
 
 def ipy_register_func(
-    func: Callable[..., Any],
     service: str,
-    extra_fields: Iterable[dict[str, Any]] | None = None,
+    extra_fields: dict[str, Any] | None = None,
     pop_fields: Iterable[str] | None = None,
 ) -> Callable[..., Any]:
     """
@@ -39,23 +37,25 @@ def ipy_register_func(
         The function with the telemetry decorator.
     """
 
-    api_handler = ApiHandler()
+    def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
+        api_handler = ApiHandler()
 
-    for field in extra_fields or []:
-        api_handler.add_extra_field(service, field)
+        api_handler.add_extra_fields(service, extra_fields or {})
+        api_handler.remove_fields(service, pop_fields or [])
+        TelemetryRegister(service).register(func.__name__)
 
-    def wrapper(*args: Any, **kwargs: Any) -> Any:
-        telemetry_register = TelemetryRegister(service)
-        telemetry_register.register(func.__name__)
-        return func(*args, **kwargs)
+        @wraps(func)
+        def wrapper(*args: Any, **kwargs: Any) -> Any:
+            return func(*args, **kwargs)
 
-    return wrapper
+        return wrapper
+
+    return decorator
 
 
 def register_func(
-    func: Callable[..., Any],
     service: str,
-    extra_fields: Iterable[dict[str, Any]] | None = None,
+    extra_fields: dict[str, Any] | None = None,
     pop_fields: Iterable[str] | None = None,
 ) -> Callable[..., Any]:
     """
@@ -80,41 +80,46 @@ def register_func(
     Callable
         The function with the telemetry decorator.
     """
-    api_handler = ApiHandler()
 
-    for field in extra_fields or []:
-        api_handler.add_extra_field(service, field)
+    def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
+        api_handler = ApiHandler()
 
-    @wraps(func)
-    def wrapper(*args: Any, **kwargs: Any) -> Any:
-        telemetry_data = api_handler._create_telemetry_record(
-            service, func.__name__, args, kwargs
-        )
-
-        for field in pop_fields or []:
-            telemetry_data.pop(field)
-
-        endpoint = Path(SERVER_URL) / api_handler.endpoints[service]
-
-        async def send_telemetry(data: dict[str, Any]) -> None:
-            headers = {"Content-Type": "application/json"}
-            async with httpx.AsyncClient() as client:
-                try:
-                    response = await client.post(endpoint, json=data, headers=headers)
-                    response.raise_for_status()
-                except httpx.RequestError as e:
-                    warnings.warn(
-                        f"Request failed: {e}", category=RuntimeWarning, stacklevel=2
-                    )
-
-        # Schedule the telemetry data to be sent in the background
-        asyncio.create_task(send_telemetry(telemetry_data))
-
-        # Register the function in the correspondng service register so we can
-        # keep track of it
+        # Configure fields & register the function
+        api_handler.add_extra_fields(service, extra_fields or {})
+        api_handler.remove_fields(service, pop_fields or [])
         TelemetryRegister(service).register(func.__name__)
 
-        # Call the original function
-        return func(*args, **kwargs)
+        @wraps(func)
+        def wrapper(*args: Any, **kwargs: Any) -> Any:
+            telemetry_data = api_handler._create_telemetry_record(
+                service, func.__name__, args, kwargs
+            )
 
-    return wrapper
+            endpoint = f"{api_handler.server_url}{api_handler.endpoints[service]}"
+
+            print(f"Sending telemetry data to {endpoint}")
+
+            async def send_telemetry(data: dict[str, Any]) -> None:
+                headers = {"Content-Type": "application/json"}
+                async with httpx.AsyncClient() as client:
+                    try:
+                        response = await client.post(
+                            endpoint, json=data, headers=headers
+                        )
+                        response.raise_for_status()
+                    except httpx.RequestError as e:
+                        warnings.warn(
+                            f"Request failed: {e}",
+                            category=RuntimeWarning,
+                            stacklevel=2,
+                        )
+
+            # Schedule the telemetry data to be sent in the background
+            asyncio.create_task(send_telemetry(telemetry_data))
+
+            # Call the original function
+            return func(*args, **kwargs)
+
+        return wrapper
+
+    return decorator

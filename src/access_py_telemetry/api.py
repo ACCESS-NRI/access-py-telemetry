@@ -57,21 +57,15 @@ class ApiHandler:
     def extra_fields(self) -> dict[str, Any]:
         return self._extra_fields
 
-    @extra_fields.setter
     @pydantic.validate_call
-    def extra_fields(self, fields: dict[str, dict[str, Any]]) -> None:
-        self._extra_fields = fields
-        return None
-
-    @pydantic.validate_call
-    def add_extra_field(self, service_name: str, field: dict[str, Any]) -> None:
+    def add_extra_fields(self, service_name: str, fields: dict[str, Any]) -> None:
         """
         Add an extra field to the telemetry data. Only works for endpoints that
         are already defined.
         """
         if service_name not in self.endpoints:
             raise KeyError(f"Endpoint '{service_name}' not found")
-        self._extra_fields[service_name] = field
+        self._extra_fields[service_name] = fields
         return None
 
     @property
@@ -90,9 +84,8 @@ class ApiHandler:
     def pop_fields(self) -> dict[str, list[str]]:
         return self._pop_fields
 
-    @pop_fields.setter
     @pydantic.validate_call
-    def pop_fields(self, service: str, fields: Iterable[str]) -> None:
+    def remove_fields(self, service: str, fields: Iterable[str]) -> None:
         """
         Set the fields to remove from the telemetry data for a given service. Useful for excluding default
         fields that are not needed for a particular telemetry call: eg, removing
@@ -118,10 +111,6 @@ class ApiHandler:
             The list of positional arguments passed to the function.
         kwargs : dict
             The dictionary of keyword arguments passed to the function.
-        extra_fields : dict, optional
-            Additional fields to include in the telemetry data, by default None.
-            Useful for including additional context information - for example, catalog
-            version if using this with the ACCESS-NRI Intake Catalog.
 
         Returns
         -------
@@ -132,11 +121,6 @@ class ApiHandler:
         RuntimeWarning
             If the request fails.
 
-        Notes
-        -----
-        SessionID() is a lazily evaluated singleton, so it looks like we are
-        going to generate a new session ID every time we call this function, but we
-        aren't. I've also modified __get__, so SessionID() evaluates to a string.
         """
 
         telemetry_data = self._create_telemetry_record(
@@ -195,6 +179,12 @@ class ApiHandler:
     ) -> dict[str, Any]:
         """
         Create and return a telemetry record, cache it as an instance attribute.
+
+        Notes
+        -----
+        SessionID() is a lazily evaluated singleton, so it looks like we are
+        going to generate a new session ID every time we call this function, but we
+        aren't. I've also modified __get__, so SessionID() evaluates to a string.
         """
         telemetry_data = {
             "name": os.getlogin(),
@@ -202,10 +192,10 @@ class ApiHandler:
             "args": args,
             "kwargs": kwargs,
             "session_id": SessionID(),
-            **self.extra_fields[service_name],
+            **self.extra_fields.get(service_name, {}),
         }
 
-        for field in self._pop_fields:
+        for field in self.pop_fields.get(service_name, []):
             telemetry_data.pop(field)
 
         self._last_record = telemetry_data

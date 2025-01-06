@@ -7,6 +7,7 @@ from typing import Type, TypeVar, Iterator, Callable, Any
 from pathlib import Path
 import pydantic
 import yaml
+import copy
 
 T = TypeVar("T", bound="TelemetryRegister")
 
@@ -51,13 +52,16 @@ class TelemetryRegister:
             return None
         self._initialized = True
         self.service = service
-        self.registry = REGISTRIES.get(service, set())
+        self.registry = copy.deepcopy(REGISTRIES.get(service, set()))
 
     def __str__(self) -> str:
         return str(list(self.registry))
 
     def __repr__(self) -> str:
-        return f"TelemetryRegister({self.service})"
+        """
+        I'm going to cheat and just print out the registry for now.
+        """
+        return self.__str__()
 
     def __contains__(self, function_name: str) -> bool:
         return function_name in self.registry

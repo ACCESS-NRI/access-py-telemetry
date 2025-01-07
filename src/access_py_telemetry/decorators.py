@@ -100,7 +100,12 @@ def register_func(
             print(f"Sending telemetry data to {endpoint}")
 
             async def send_telemetry(data: dict[str, Any]) -> None:
+
+                print(f"Telemetry Data: {data}")
+                print(f"Endpoint: {endpoint}")
                 headers = {"Content-Type": "application/json"}
+                print(f"Headers: {headers}")
+
                 async with httpx.AsyncClient() as client:
                     try:
                         response = await client.post(
@@ -113,9 +118,25 @@ def register_func(
                             category=RuntimeWarning,
                             stacklevel=2,
                         )
+            # Check if there's an existing event loop, otherwise create a new one
 
-            # Schedule the telemetry data to be sent in the background
-            asyncio.create_task(send_telemetry(telemetry_data))
+
+            try:
+                loop = asyncio.get_running_loop()
+            except RuntimeError:
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+
+            if loop.is_running():
+                loop.create_task(send_telemetry(telemetry_data))
+            else:
+                # breakpoint()
+                # loop.create_task(send_telemetry(telemetry_data))
+                loop.run_until_complete(send_telemetry(telemetry_data))
+                warnings.warn(
+                    "Event loop not running, telemetry will block execution",
+                    category=RuntimeWarning,
+                )
 
             # Call the original function
             return func(*args, **kwargs)

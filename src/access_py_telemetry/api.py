@@ -5,7 +5,8 @@ SPDX-License-Identifier: Apache-2.0
 
 from typing import Any, Type, TypeVar, Iterable
 import warnings
-import os
+from colorama import Fore, Style
+import getpass
 import datetime
 import hashlib
 import httpx
@@ -60,11 +61,11 @@ class ApiHandler:
     @pydantic.validate_call
     def add_extra_fields(self, service_name: str, fields: dict[str, Any]) -> None:
         """
-        Add an extra field to the telemetry data. Only works for endpoints that
-        are already defined.
+        Add an extra field to the telemetry data. Only works for services that
+        already have an endpoint defined.
         """
         if service_name not in self.endpoints:
-            raise KeyError(f"Endpoint '{service_name}' not found")
+            raise KeyError(f"Endpoint for '{service_name}' not found")
         self._extra_fields[service_name] = fields
         return None
 
@@ -91,6 +92,8 @@ class ApiHandler:
         fields that are not needed for a particular telemetry call: eg, removing
         Session tracking if a CLI is being used.
         """
+        if isinstance(fields, str):
+            fields = [fields]
         self._pop_fields[service] = list(fields)
 
     def send_api_request(
@@ -135,15 +138,17 @@ class ApiHandler:
             ) from e
 
         endpoint = f"{self.server_url}{endpoint}"
+        
+        print(f"{Fore.RED}Sending telemetry data to {endpoint}{Style.RESET_ALL}")
 
-        async def send_telemetry(data: dict[str, Any]) -> None:
+        async def send_telemetry(endpoint : str ,data: dict[str, Any]) -> None:
             headers = {"Content-Type": "application/json"}
             async with httpx.AsyncClient() as client:
                 try:
+                    print(f"Posting telemetry to {endpoint}")
                     response = await client.post(
-                        service_name, json=data, headers=headers
+                        endpoint, json=data, headers=headers
                     )
-                    print("Telemetry Posted!")
                     response.raise_for_status()
                 except httpx.RequestError as e:
                     warnings.warn(
@@ -159,11 +164,11 @@ class ApiHandler:
             asyncio.set_event_loop(loop)
 
         if loop.is_running():
-            loop.create_task(send_telemetry(telemetry_data))
+            loop.create_task(send_telemetry(endpoint,telemetry_data))
         else:
             # breakpoint()
             # loop.create_task(send_telemetry(telemetry_data))
-            loop.run_until_complete(send_telemetry(telemetry_data))
+            loop.run_until_complete(send_telemetry(endpoint, telemetry_data))
             warnings.warn(
                 "Event loop not running, telemetry will block execution",
                 category=RuntimeWarning,
@@ -187,7 +192,7 @@ class ApiHandler:
         aren't. I've also modified __get__, so SessionID() evaluates to a string.
         """
         telemetry_data = {
-            "name": os.getlogin(),
+            "name": getpass.getuser(),
             "function": function_name,
             "args": args,
             "kwargs": kwargs,
@@ -237,7 +242,7 @@ class SessionID:
 
     @staticmethod
     def create_session_id() -> str:
-        login = os.getlogin()
+        login = getpass.getuser()
         timestamp = datetime.datetime.now().isoformat()
         session_str = f"{login}_{timestamp}"
         session_id = hashlib.sha256((session_str).encode()).hexdigest()

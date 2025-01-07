@@ -4,4 +4,7 @@ catalog:
     - esm_datastore.search
     - DfFileCatalog.search
     - DfFileCatalog.__getitem__
-
+payu: 
+  endpoint: /payu/update
+  items:
+    - Experiment.run

@@ -7,7 +7,7 @@ import argparse
 import filecmp
 from pathlib import Path
 
-PACKAGE_ROOT = Path(access_py_telemetry.__file__).parent.parent.parent
+PACKAGE_ROOT = Path(access_py_telemetry.__file__).parent
 
 
 def configure_telemetry(argv: Sequence[str] | None = None) -> int:
@@ -43,9 +43,13 @@ def configure_telemetry(argv: Sequence[str] | None = None) -> int:
         if telem_file_exists and filecmp.cmp(telemetry_fname, template_file):
             print("Telemetry enabled.") if not args.silent else None
         elif telem_file_exists and not filecmp.cmp(telemetry_fname, template_file):
-            print(
-                "Telemetry enabled but misconfigured. Run `access-py-telemetry --disable && access-py-telemetry --enable` to fix."
-            ) if not args.silent else None
+            (
+                print(
+                    "Telemetry enabled but misconfigured. Run `access-py-telemetry --disable && access-py-telemetry --enable` to fix."
+                )
+                if not args.silent
+                else None
+            )
         else:
             print("Telemetry disabled.") if not args.silent else None
         return 0

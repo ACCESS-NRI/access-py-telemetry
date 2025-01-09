@@ -138,17 +138,15 @@ class ApiHandler:
             ) from e
 
         endpoint = f"{self.server_url}{endpoint}"
-        
+
         print(f"{Fore.RED}Sending telemetry data to {endpoint}{Style.RESET_ALL}")
 
-        async def send_telemetry(endpoint : str ,data: dict[str, Any]) -> None:
+        async def send_telemetry(endpoint: str, data: dict[str, Any]) -> None:
             headers = {"Content-Type": "application/json"}
             async with httpx.AsyncClient() as client:
                 try:
                     print(f"Posting telemetry to {endpoint}")
-                    response = await client.post(
-                        endpoint, json=data, headers=headers
-                    )
+                    response = await client.post(endpoint, json=data, headers=headers)
                     response.raise_for_status()
                 except httpx.RequestError as e:
                     warnings.warn(
@@ -164,7 +162,7 @@ class ApiHandler:
             asyncio.set_event_loop(loop)
 
         if loop.is_running():
-            loop.create_task(send_telemetry(endpoint,telemetry_data))
+            loop.create_task(send_telemetry(endpoint, telemetry_data))
         else:
             # breakpoint()
             # loop.create_task(send_telemetry(telemetry_data))

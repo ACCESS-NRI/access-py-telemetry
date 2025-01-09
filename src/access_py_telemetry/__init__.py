@@ -36,4 +36,5 @@ if ip:
     load_ipython_extension(ip)
 
 from . import _version
-__version__ = _version.get_versions()['version']
+
+__version__ = _version.get_versions()["version"]

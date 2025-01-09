@@ -17,6 +17,6 @@ dependencies:
   - coverage
   - mypy
   - ruff
-  - pytest-asyncio==0.25.0
   - pip:
     - codecov
+    - pytest-asyncio==0.25.0

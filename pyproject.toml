@@ -1,12 +1,15 @@
 [build-system]
-requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
+requires = [
+  "setuptools >= 61.0.0",
+  "versioneer[toml]",
+]
 
 [project]
 name = "access_py_telemetry"
-version = "0.1.0"
 description = "Contains ipython extensions to automatically add telemetry to registered function calls from Ipython kernels"
 readme = "README.md"
+requires-python = ">=3.10"
 authors = [
   { name = "ACCESS-NRI" },
 ]
@@ -14,7 +17,10 @@ maintainers = [
   { name = "ACCESS-NRI" },
 ]
 classifiers = [
-
+    "Development Status :: 4 - Beta",
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: Apache Software License",
+    "Operating System :: OS Independent",
 ]
 license = {text = "Apache Software License 2.0"}
 dependencies = [
@@ -24,12 +30,14 @@ dependencies = [
    "httpx>=0.28.0",
 ]
 
+dynamic = ["version"]
+
 [project.optional-dependencies]
 dev = [
     "coverage",  # testing
     "mypy",  # linting
     "pytest",  # testing
-    "ruff"  # linting
+    "ruff",  # linting
 ]
 
 [project.scripts]
@@ -48,16 +56,33 @@ package-dir = {"" = "src"}
 "*" = ["*.*"]
 
 
-
-
 # Mypy
 # ----
 
 [tool.mypy]
 files = "."
+exclude = [
+  "tests",
+  "docs",
+  "templates",
+  "src/access_py_telemetry/_version.py",
+]
 
 # Use strict defaults
 strict = true
 warn_unreachable = true
 warn_no_return = true
 
+[tool.versioneer]
+VCS = "git"
+style = "pep440"
+versionfile_source = "src/access_py_telemetry/_version.py"
+versionfile_build = "access_py_telemetry/_version.py"
+tag_prefix = "v"
+parentdir_prefix = "access-py-telemetry"
+
+[tool.coverage.run]
+omit = [
+    "*/_version.py",
+    "*/data/__init__.py",
+]

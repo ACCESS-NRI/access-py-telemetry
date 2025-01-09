@@ -5,7 +5,7 @@ SPDX-License-Identifier: Apache-2.0
 
 from typing import Any, Type, TypeVar, Iterable
 import warnings
-import os
+import getpass
 import datetime
 import hashlib
 import httpx
@@ -187,7 +187,7 @@ class ApiHandler:
         aren't. I've also modified __get__, so SessionID() evaluates to a string.
         """
         telemetry_data = {
-            "name": os.getlogin(),
+            "name": getpass.getuser(),
             "function": function_name,
             "args": args,
             "kwargs": kwargs,
@@ -237,7 +237,7 @@ class SessionID:
 
     @staticmethod
     def create_session_id() -> str:
-        login = os.getlogin()
+        login = getpass.getuser()
         timestamp = datetime.datetime.now().isoformat()
         session_str = f"{login}_{timestamp}"
         session_id = hashlib.sha256((session_str).encode()).hexdigest()

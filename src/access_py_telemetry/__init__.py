@@ -34,3 +34,6 @@ def load_ipython_extension(ipython: InteractiveShell) -> None:
 ip = get_ipython()  # type: ignore
 if ip:
     load_ipython_extension(ip)
+
+from . import _version
+__version__ = _version.get_versions()['version']

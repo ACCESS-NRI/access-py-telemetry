@@ -7,7 +7,7 @@ import argparse
 import filecmp
 from pathlib import Path
 
-PACKAGE_ROOT = Path(access_py_telemetry.__file__).parent.parent.parent
+PACKAGE_ROOT = Path(access_py_telemetry.__file__).parent
 
 
 def configure_telemetry(argv: Sequence[str] | None = None) -> int:

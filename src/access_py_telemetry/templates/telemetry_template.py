@@ -1,3 +1,5 @@
+# type: ignore
+
 try:
     from access_py_telemetry import capture_registered_calls
     from IPython import get_ipython

@@ -9,6 +9,7 @@ import warnings
 from IPython.core.getipython import get_ipython
 from IPython.core.interactiveshell import InteractiveShell
 
+from . import _version
 from .ast import capture_registered_calls
 from .api import SessionID, ENDPOINTS  # noqa
 from .registry import REGISTRIES, RegisterWarning
@@ -35,5 +36,5 @@ ip = get_ipython()  # type: ignore
 if ip:
     load_ipython_extension(ip)
 
-from . import _version
-__version__ = _version.get_versions()['version']
+
+__version__ = _version.get_versions()["version"]  # type: ignore

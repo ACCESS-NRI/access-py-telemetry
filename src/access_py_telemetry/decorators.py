@@ -118,8 +118,8 @@ def register_func(
                             category=RuntimeWarning,
                             stacklevel=2,
                         )
-            # Check if there's an existing event loop, otherwise create a new one
 
+            # Check if there's an existing event loop, otherwise create a new one
 
             try:
                 loop = asyncio.get_running_loop()

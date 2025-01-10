@@ -5,7 +5,6 @@ SPDX-License-Identifier: Apache-2.0
 
 from typing import Any, Type, TypeVar, Iterable
 import warnings
-from colorama import Fore, Style
 import getpass
 import datetime
 import hashlib
@@ -140,8 +139,6 @@ class ApiHandler:
             ) from e
 
         endpoint = f"{self.server_url}{endpoint}"
-
-        print(f"{Fore.RED}Sending telemetry data to {endpoint}{Style.RESET_ALL}")
 
         send_in_loop(endpoint, telemetry_data)
         return None

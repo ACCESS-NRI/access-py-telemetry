@@ -1,10 +1,8 @@
 from typing import Callable, Any, Iterable
 from .registry import TelemetryRegister
 from functools import wraps
-import warnings
-import asyncio
 
-from .api import ApiHandler, send_telemetry
+from .api import ApiHandler, send_in_loop
 
 
 def ipy_register_func(
@@ -98,23 +96,7 @@ def register_func(
 
             print(f"Sending telemetry data to {endpoint}")
 
-            # Check if there's an existing event loop, otherwise create a new one
-            try:
-                loop = asyncio.get_running_loop()
-            except RuntimeError:
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
-
-            if loop.is_running():
-                loop.create_task(send_telemetry(endpoint, telemetry_data))
-            else:
-                # breakpoint()
-                # loop.create_task(send_telemetry(telemetry_data))
-                loop.run_until_complete(send_telemetry(endpoint, telemetry_data))
-                warnings.warn(
-                    "Event loop not running, telemetry will block execution",
-                    category=RuntimeWarning,
-                )
+            send_in_loop(endpoint, telemetry_data)
 
             # Call the original function
             return func(*args, **kwargs)

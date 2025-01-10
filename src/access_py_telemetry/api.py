@@ -143,23 +143,7 @@ class ApiHandler:
 
         print(f"{Fore.RED}Sending telemetry data to {endpoint}{Style.RESET_ALL}")
 
-        # Check if there's an existing event loop, otherwise create a new one
-        try:
-            loop = asyncio.get_running_loop()
-        except RuntimeError:
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-
-        if loop.is_running():
-            loop.create_task(send_telemetry(endpoint, telemetry_data))
-        else:
-            # breakpoint()
-            # loop.create_task(send_telemetry(telemetry_data))
-            loop.run_until_complete(send_telemetry(endpoint, telemetry_data))
-            warnings.warn(
-                "Event loop not running, telemetry will block execution",
-                category=RuntimeWarning,
-            )
+        send_in_loop(endpoint, telemetry_data)
         return None
 
     def _create_telemetry_record(
@@ -264,3 +248,46 @@ async def send_telemetry(endpoint: str, data: dict[str, Any]) -> None:
         except (httpx.RequestError, httpx.HTTPStatusError) as e:
             warnings.warn(f"Request failed: {e}", category=RuntimeWarning, stacklevel=2)
     return None
+
+
+def send_in_loop(endpoint: str, telemetry_data: dict[str, Any]) -> None:
+    """
+    Wraps the send_telemetry function in an event loop. This function will:
+    - Check if an event loop is already running
+    - Create a new event loop if one is not running
+    - Send the telemetry data
+
+    Parameters
+    ----------
+    endpoint : str
+        The URL to send the telemetry data to.
+    telemetry_data : dict
+        The telemetry data to send.
+
+    Returns
+    -------
+    None
+
+    Warnings
+    --------
+    RuntimeWarning
+        If the event loop is not running, telemetry will block execution.
+    """
+
+    # Check if there's an existing event loop, otherwise create a new one
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+
+    if loop.is_running():
+        loop.create_task(send_telemetry(endpoint, telemetry_data))
+    else:
+        # breakpoint()
+        # loop.create_task(send_telemetry(telemetry_data))
+        loop.run_until_complete(send_telemetry(endpoint, telemetry_data))
+        warnings.warn(
+            "Event loop not running, telemetry will block execution",
+            category=RuntimeWarning,
+        )

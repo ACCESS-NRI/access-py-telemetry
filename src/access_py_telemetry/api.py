@@ -143,19 +143,6 @@ class ApiHandler:
 
         print(f"{Fore.RED}Sending telemetry data to {endpoint}{Style.RESET_ALL}")
 
-        async def send_telemetry(endpoint: str, data: dict[str, Any]) -> None:
-            headers = {"Content-Type": "application/json"}
-            async with httpx.AsyncClient() as client:
-                try:
-                    print(f"Posting telemetry to {endpoint}")
-                    response = await client.post(endpoint, json=data, headers=headers)
-                    response.raise_for_status()
-                except (httpx.RequestError, httpx.HTTPStatusError) as e:
-                    warnings.warn(
-                        f"Request failed: {e}", category=RuntimeWarning, stacklevel=2
-                    )
-            return None
-
         # Check if there's an existing event loop, otherwise create a new one
         try:
             loop = asyncio.get_running_loop()
@@ -247,3 +234,33 @@ class SessionID:
         session_str = f"{login}_{timestamp}"
         session_id = hashlib.sha256((session_str).encode()).hexdigest()
         return session_id
+
+
+async def send_telemetry(endpoint: str, data: dict[str, Any]) -> None:
+    """
+    Asynchronously send telemetry data to the specified endpoint.
+
+    Parameters
+    ----------
+    endpoint : str
+        The URL to send the telemetry data to.
+    data : dict
+
+    Returns
+    -------
+    None
+
+    Warnings
+    --------
+    RuntimeWarning
+        If the request fails.
+    """
+    headers = {"Content-Type": "application/json"}
+    async with httpx.AsyncClient() as client:
+        try:
+            print(f"Posting telemetry to {endpoint}")
+            response = await client.post(endpoint, json=data, headers=headers)
+            response.raise_for_status()
+        except (httpx.RequestError, httpx.HTTPStatusError) as e:
+            warnings.warn(f"Request failed: {e}", category=RuntimeWarning, stacklevel=2)
+    return None

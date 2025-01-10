@@ -1,11 +1,10 @@
 from typing import Callable, Any, Iterable
 from .registry import TelemetryRegister
 from functools import wraps
-import httpx
 import warnings
 import asyncio
 
-from .api import ApiHandler
+from .api import ApiHandler, send_telemetry
 
 
 def ipy_register_func(
@@ -99,28 +98,7 @@ def register_func(
 
             print(f"Sending telemetry data to {endpoint}")
 
-            async def send_telemetry(data: dict[str, Any]) -> None:
-
-                print(f"Telemetry Data: {data}")
-                print(f"Endpoint: {endpoint}")
-                headers = {"Content-Type": "application/json"}
-                print(f"Headers: {headers}")
-
-                async with httpx.AsyncClient() as client:
-                    try:
-                        response = await client.post(
-                            endpoint, json=data, headers=headers
-                        )
-                        response.raise_for_status()
-                    except httpx.RequestError as e:
-                        warnings.warn(
-                            f"Request failed: {e}",
-                            category=RuntimeWarning,
-                            stacklevel=2,
-                        )
-
             # Check if there's an existing event loop, otherwise create a new one
-
             try:
                 loop = asyncio.get_running_loop()
             except RuntimeError:
@@ -128,11 +106,11 @@ def register_func(
                 asyncio.set_event_loop(loop)
 
             if loop.is_running():
-                loop.create_task(send_telemetry(telemetry_data))
+                loop.create_task(send_telemetry(endpoint, telemetry_data))
             else:
                 # breakpoint()
                 # loop.create_task(send_telemetry(telemetry_data))
-                loop.run_until_complete(send_telemetry(telemetry_data))
+                loop.run_until_complete(send_telemetry(endpoint, telemetry_data))
                 warnings.warn(
                     "Event loop not running, telemetry will block execution",
                     category=RuntimeWarning,

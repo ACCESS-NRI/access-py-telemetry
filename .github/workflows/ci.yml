@@ -38,9 +38,9 @@ jobs:
         shell: bash -l {0}
         run: conda list
 
-      - name: Run tests
+      - name: Run tests with randomised order
         shell: bash -l {0}
-        run: coverage run -m --source=access_py_telemetry pytest tests
+        run: coverage run -m --source=access_py_telemetry pytest --random-order tests
       
       - name: Generate coverage report
         shell: bash -l {0}

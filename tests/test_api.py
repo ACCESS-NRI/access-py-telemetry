@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+# type: ignore
 
 """Tests for `access_py_telemetry` package."""
 
@@ -15,7 +16,7 @@ def local_host():
 
 @pytest.fixture
 def default_url():
-    return "https://tracking-services-d6c2fd311c12.herokuapp.com"
+    return access_py_telemetry.api.SERVER_URL
 
 
 def test_session_id_properties():
@@ -41,6 +42,8 @@ def test_api_handler_server_url(local_host, default_url):
     """
     Check that the APIHandler class is a singleton.
     """
+    ApiHandler._instance = None
+
     session1 = ApiHandler()
     session2 = ApiHandler()
 
@@ -53,11 +56,15 @@ def test_api_handler_server_url(local_host, default_url):
     session1.server_url = local_host
     assert session2.server_url == local_host
 
+    ApiHandler._instance = None
+
 
 def test_api_handler_extra_fields(local_host):
     """
     Check that adding extra fields to the APIHandler class works as expected.
     """
+
+    ApiHandler._instance = None
 
     session1 = ApiHandler()
     session2 = ApiHandler()
@@ -71,7 +78,9 @@ def test_api_handler_extra_fields(local_host):
 
     session1.add_extra_fields("catalog", {"version": "1.0"})
 
-    assert session2.extra_fields == {"catalog": {"version": "1.0"}}
+    blank_registries = {key: {} for key in session1.registries if key != "catalog"}
+
+    assert session2.extra_fields == {"catalog": {"version": "1.0"}, **blank_registries}
 
     with pytest.raises(KeyError) as excinfo:
         session1.add_extra_fields("catalogue", {"version": "2.0"})
@@ -83,8 +92,7 @@ def test_api_handler_extra_fields(local_host):
     assert session1.server_url == local_host
     assert session3.server_url == local_host
 
-    # Reset the server URL to avoid breaking other tests
-    session1.server_url = default_url
+    ApiHandler._instance = None
 
 
 def test_api_handler_extra_fields_validation():
@@ -93,6 +101,7 @@ def test_api_handler_extra_fields_validation():
     to pass the correct types, and only let us update fields through the
     add_extra_field method.
     """
+    ApiHandler._instance = None
     api_handler = ApiHandler()
 
     # Mock a couple of extra services
@@ -123,11 +132,14 @@ def test_api_handler_extra_fields_validation():
         ep_name: {} for ep_name in api_handler.endpoints.keys()
     }
 
+    ApiHandler._instance = None
+
 
 def test_api_handler_remove_fields():
     """
     Check that we can remove fields from the telemetry record.
     """
+    ApiHandler._instance = None
     api_handler = ApiHandler()
 
     # Pretend we only have catalog & payu services and then mock the initialisation
@@ -164,21 +176,17 @@ def test_api_handler_remove_fields():
 
     assert api_handler._pop_fields == {"payu": ["session_id"]}
 
-    # Reset endpoints to avoid breaking other tests - we have to be careful here
-    # because we're using a singleton
-    api_handler.endpoints = access_py_telemetry.api.ENDPOINTS
-    api_handler._extra_fields = {
-        ep_name: {} for ep_name in api_handler.endpoints.keys()
-    }
-    api_handler._pop_fields = {}
+    ApiHandler._instance = None
 
 
-def test_api_handler_send_api_request_no_loop():
+def test_api_handler_send_api_request_no_loop(local_host):
     """
     Create and send an API request with telemetry data.
     """
 
+    ApiHandler._instance = None
     api_handler = ApiHandler()
+    api_handler.server_url = local_host
 
     # Pretend we only have catalog & payu services and then mock the initialisation
     # of the _extra_fields attribute
@@ -217,13 +225,7 @@ def test_api_handler_send_api_request_no_loop():
         "random_number": 2,
     }
 
-    # Reset endpoints to avoid breaking other tests - we have to be careful here
-    # because we're using a singleton
-    api_handler.endpoints = access_py_telemetry.api.ENDPOINTS
-    api_handler._extra_fields = {
-        ep_name: {} for ep_name in api_handler.endpoints.keys()
-    }
-    api_handler._pop_fields = {}
+    ApiHandler._instance = None
 
 
 def test_api_handler_invalid_endpoint():
@@ -231,6 +233,7 @@ def test_api_handler_invalid_endpoint():
     Create and send an API request with telemetry data.
     """
 
+    ApiHandler._instance = None
     api_handler = ApiHandler()
 
     # Pretend we only have catalog & payu services and then mock the initialisation
@@ -253,3 +256,6 @@ def test_api_handler_invalid_endpoint():
         )
 
     assert "Endpoint for 'payu' not found " in str(excinfo.value)
+
+    ApiHandler._instance = None
+    api_handler._instance = None

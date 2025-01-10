@@ -19,4 +19,4 @@ repos:
       additional_dependencies: [types-PyYAML==6.0.12.20240808, types-requests==2.32.0.20241016
       ,annotated-types==0.7.0,pydantic,pydantic_core,httpx,ipython]
       files: ^src/
-      args: [--strict]
+      args: [--strict,--ignore-missing-imports]

@@ -1,11 +1,8 @@
 from typing import Callable, Any, Iterable
 from .registry import TelemetryRegister
 from functools import wraps
-import httpx
-import warnings
-import asyncio
 
-from .api import ApiHandler
+from .api import ApiHandler, send_in_loop
 
 
 def ipy_register_func(
@@ -99,23 +96,7 @@ def register_func(
 
             print(f"Sending telemetry data to {endpoint}")
 
-            async def send_telemetry(data: dict[str, Any]) -> None:
-                headers = {"Content-Type": "application/json"}
-                async with httpx.AsyncClient() as client:
-                    try:
-                        response = await client.post(
-                            endpoint, json=data, headers=headers
-                        )
-                        response.raise_for_status()
-                    except httpx.RequestError as e:
-                        warnings.warn(
-                            f"Request failed: {e}",
-                            category=RuntimeWarning,
-                            stacklevel=2,
-                        )
-
-            # Schedule the telemetry data to be sent in the background
-            asyncio.create_task(send_telemetry(telemetry_data))
+            send_in_loop(endpoint, telemetry_data)
 
             # Call the original function
             return func(*args, **kwargs)

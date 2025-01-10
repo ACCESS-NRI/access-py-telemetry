@@ -21,6 +21,7 @@ with open(Path(__file__).parent / "config.yaml", "r") as f:
     config = yaml.safe_load(f)
 
 ENDPOINTS = {registry: content.get("endpoint") for registry, content in config.items()}
+REGISTRIES = {registry for registry in config.keys()}
 SERVER_URL = "https://tracking-services-d6c2fd311c12.herokuapp.com"
 
 
@@ -48,6 +49,7 @@ class ApiHandler:
         self._initialized = True
         self._server_url = SERVER_URL
         self.endpoints = ENDPOINTS
+        self.registries = REGISTRIES
         self._extra_fields: dict[str, dict[str, Any]] = {
             ep_name: {} for ep_name in self.endpoints.keys()
         }
@@ -60,11 +62,11 @@ class ApiHandler:
     @pydantic.validate_call
     def add_extra_fields(self, service_name: str, fields: dict[str, Any]) -> None:
         """
-        Add an extra field to the telemetry data. Only works for endpoints that
-        are already defined.
+        Add an extra field to the telemetry data. Only works for services that
+        already have an endpoint defined.
         """
         if service_name not in self.endpoints:
-            raise KeyError(f"Endpoint '{service_name}' not found")
+            raise KeyError(f"Endpoint for '{service_name}' not found")
         self._extra_fields[service_name] = fields
         return None
 
@@ -91,6 +93,8 @@ class ApiHandler:
         fields that are not needed for a particular telemetry call: eg, removing
         Session tracking if a CLI is being used.
         """
+        if isinstance(fields, str):
+            fields = [fields]
         self._pop_fields[service] = list(fields)
 
     def send_api_request(
@@ -136,38 +140,7 @@ class ApiHandler:
 
         endpoint = f"{self.server_url}{endpoint}"
 
-        async def send_telemetry(data: dict[str, Any]) -> None:
-            headers = {"Content-Type": "application/json"}
-            async with httpx.AsyncClient() as client:
-                try:
-                    response = await client.post(
-                        service_name, json=data, headers=headers
-                    )
-                    print("Telemetry Posted!")
-                    response.raise_for_status()
-                except httpx.RequestError as e:
-                    warnings.warn(
-                        f"Request failed: {e}", category=RuntimeWarning, stacklevel=2
-                    )
-            return None
-
-        # Check if there's an existing event loop, otherwise create a new one
-        try:
-            loop = asyncio.get_running_loop()
-        except RuntimeError:
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-
-        if loop.is_running():
-            loop.create_task(send_telemetry(telemetry_data))
-        else:
-            # breakpoint()
-            # loop.create_task(send_telemetry(telemetry_data))
-            loop.run_until_complete(send_telemetry(telemetry_data))
-            warnings.warn(
-                "Event loop not running, telemetry will block execution",
-                category=RuntimeWarning,
-            )
+        send_in_loop(endpoint, telemetry_data)
         return None
 
     def _create_telemetry_record(
@@ -242,3 +215,76 @@ class SessionID:
         session_str = f"{login}_{timestamp}"
         session_id = hashlib.sha256((session_str).encode()).hexdigest()
         return session_id
+
+
+async def send_telemetry(endpoint: str, data: dict[str, Any]) -> None:
+    """
+    Asynchronously send telemetry data to the specified endpoint.
+
+    Parameters
+    ----------
+    endpoint : str
+        The URL to send the telemetry data to.
+    data : dict
+
+    Returns
+    -------
+    None
+
+    Warnings
+    --------
+    RuntimeWarning
+        If the request fails.
+    """
+    headers = {"Content-Type": "application/json"}
+    async with httpx.AsyncClient() as client:
+        try:
+            print(f"Posting telemetry to {endpoint}")
+            response = await client.post(endpoint, json=data, headers=headers)
+            response.raise_for_status()
+        except (httpx.RequestError, httpx.HTTPStatusError) as e:
+            warnings.warn(f"Request failed: {e}", category=RuntimeWarning, stacklevel=2)
+    return None
+
+
+def send_in_loop(endpoint: str, telemetry_data: dict[str, Any]) -> None:
+    """
+    Wraps the send_telemetry function in an event loop. This function will:
+    - Check if an event loop is already running
+    - Create a new event loop if one is not running
+    - Send the telemetry data
+
+    Parameters
+    ----------
+    endpoint : str
+        The URL to send the telemetry data to.
+    telemetry_data : dict
+        The telemetry data to send.
+
+    Returns
+    -------
+    None
+
+    Warnings
+    --------
+    RuntimeWarning
+        If the event loop is not running, telemetry will block execution.
+    """
+
+    # Check if there's an existing event loop, otherwise create a new one
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+
+    if loop.is_running():
+        loop.create_task(send_telemetry(endpoint, telemetry_data))
+    else:
+        # breakpoint()
+        # loop.create_task(send_telemetry(telemetry_data))
+        loop.run_until_complete(send_telemetry(endpoint, telemetry_data))
+        warnings.warn(
+            "Event loop not running, telemetry will block execution",
+            category=RuntimeWarning,
+        )

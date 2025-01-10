@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+# type: ignore
 
 """Tests for `access_py_telemetry` package."""
 
@@ -12,6 +13,7 @@ def test_telemetry_register_unique():
     Check that the TelemetryRegister class is a singleton & that we can register
     and deregister functions as we would expect.
     """
+    TelemetryRegister._instances = {}
     session1 = TelemetryRegister("catalog")
     session2 = TelemetryRegister("catalog")
 
@@ -46,12 +48,11 @@ def test_telemetry_register_unique():
         "DfFileCatalog.search",
     }
 
-    from access_py_telemetry.registry import REGISTRIES
-
-    session1.registry = REGISTRIES["catalog"]
+    TelemetryRegister._instances = {}
 
 
 def test_telemetry_register_validation():
+    TelemetryRegister._instances = {}
     session_register = TelemetryRegister("catalog")
 
     with pytest.raises(ValidationError):
@@ -88,6 +89,4 @@ def test_telemetry_register_validation():
 
     assert "test_function" not in session_register
 
-    from access_py_telemetry.registry import REGISTRIES
-
-    session_register.registry = REGISTRIES["catalog"]
+    TelemetryRegister._instances = {}

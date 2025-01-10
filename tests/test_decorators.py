@@ -1,3 +1,5 @@
+# type: ignore
+
 from access_py_telemetry.decorators import ipy_register_func, register_func
 from access_py_telemetry.registry import TelemetryRegister
 from access_py_telemetry.api import ApiHandler
@@ -22,9 +24,11 @@ def test_ipy_register_func():
 
     register = TelemetryRegister("catalog")
     api_handler = ApiHandler()
+    blank_registries = {key: {} for key in api_handler.registries if key != "catalog"}
 
     assert api_handler.extra_fields == {
-        "catalog": {"model": "ACCESS-OM2", "random_number": 2}
+        "catalog": {"model": "ACCESS-OM2", "random_number": 2},
+        **blank_registries,
     }
 
     assert api_handler.pop_fields == {"catalog": ["session_id"]}
@@ -35,9 +39,9 @@ def test_ipy_register_func():
 
     register.deregister(my_func.__name__)
 
-    # Reset the api_handler to avoid breaking other tests
-
-    api_handler._extra_fields = {}
+    # Reset the api_handler and register to avoid breaking other tests
+    api_handler._instance = None
+    register._instances = {}
 
 
 @pytest.mark.asyncio
@@ -57,8 +61,11 @@ async def test_register_func():
     register = TelemetryRegister("catalog")
     api_handler = ApiHandler()
 
+    blank_registries = {key: {} for key in api_handler.registries if key != "catalog"}
+
     assert api_handler.extra_fields == {
-        "catalog": {"model": "ACCESS-OM2", "random_number": 2}
+        "catalog": {"model": "ACCESS-OM2", "random_number": 2},
+        **blank_registries,
     }
 
     assert api_handler.pop_fields == {"catalog": ["session_id"]}
@@ -81,6 +88,6 @@ async def test_register_func():
 
     register.deregister(my_func.__name__)
 
-    # Reset the api_handler to avoid breaking other tests
-
-    api_handler._extra_fields = {}
+    # Reset the api_handler and register to avoid breaking other tests
+    api_handler._instance = None
+    register._instances = {}

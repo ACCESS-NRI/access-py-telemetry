@@ -22,6 +22,7 @@ with open(Path(__file__).parent / "config.yaml", "r") as f:
     config = yaml.safe_load(f)
 
 ENDPOINTS = {registry: content.get("endpoint") for registry, content in config.items()}
+REGISTRIES = {registry for registry in config.keys()}
 SERVER_URL = "https://tracking-services-d6c2fd311c12.herokuapp.com"
 
 
@@ -49,6 +50,7 @@ class ApiHandler:
         self._initialized = True
         self._server_url = SERVER_URL
         self.endpoints = ENDPOINTS
+        self.registries = REGISTRIES
         self._extra_fields: dict[str, dict[str, Any]] = {
             ep_name: {} for ep_name in self.endpoints.keys()
         }
@@ -148,7 +150,7 @@ class ApiHandler:
                     print(f"Posting telemetry to {endpoint}")
                     response = await client.post(endpoint, json=data, headers=headers)
                     response.raise_for_status()
-                except httpx.RequestError as e:
+                except (httpx.RequestError, httpx.HTTPStatusError) as e:
                     warnings.warn(
                         f"Request failed: {e}", category=RuntimeWarning, stacklevel=2
                     )

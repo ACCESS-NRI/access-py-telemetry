@@ -35,6 +35,13 @@ class ApiHandler:
     """
 
     _instance = None
+    _server_url = SERVER_URL[:]
+    endpoints = {key: val for key, val in ENDPOINTS.items()}
+    registries = {key for key in REGISTRIES}
+    _extra_fields: dict[str, dict[str, Any]] = {
+        ep_name: {} for ep_name in ENDPOINTS.keys()
+    }
+    _pop_fields: dict[str, list[str]] = {}
 
     def __new__(cls: Type[H]) -> H:
         if cls._instance is None:
@@ -47,13 +54,6 @@ class ApiHandler:
         if hasattr(self, "_initialized"):
             return None
         self._initialized = True
-        self._server_url = SERVER_URL
-        self.endpoints = ENDPOINTS
-        self.registries = REGISTRIES
-        self._extra_fields: dict[str, dict[str, Any]] = {
-            ep_name: {} for ep_name in self.endpoints.keys()
-        }
-        self._pop_fields: dict[str, list[str]] = {}
 
     @property
     def extra_fields(self) -> dict[str, Any]:

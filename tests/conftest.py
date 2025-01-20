@@ -1,44 +1,29 @@
+# type: ignore
 from pytest import fixture
-from access_py_telemetry.api import ApiHandler, SERVER_URL, ENDPOINTS
-from access_py_telemetry.registry import TelemetryRegister, REGISTRIES
-import copy
+from access_py_telemetry.api import ApiHandler, ENDPOINTS, SERVER_URL, REGISTRIES
+from access_py_telemetry.registry import TelemetryRegister
 
 
-@fixture(scope="session")
+@fixture
 def api_handler():
     """
     Get an instance of the APIHandler class, and then reset it after the test.
+
     """
     yield ApiHandler()
 
-    # Reset the api_handler to avoid breaking other tests
-
-    for ep_name in ENDPOINTS.keys():
-        TelemetryRegister(ep_name).registry = copy.deepcopy(REGISTRIES.get(ep_name, {}))
-
-    ApiHandler().endpoints = ENDPOINTS
-    ApiHandler()._extra_fields = {ep_name: {} for ep_name in ENDPOINTS.keys()}
-    ApiHandler()._pop_fields = {}
-    ApiHandler()._server_url = SERVER_URL
+    ApiHandler._instance = None
+    ApiHandler._server_url = SERVER_URL[:]
+    ApiHandler.endpoints = {key: val for key, val in ENDPOINTS.items()}
+    ApiHandler.registries = {key for key in REGISTRIES}
+    ApiHandler._extra_fields = {ep_name: {} for ep_name in ENDPOINTS.keys()}
+    ApiHandler._pop_fields = {}
 
 
-@fixture(scope="session")
-def cat_register():
+@fixture
+def reset_telemetry_register():
     """
-    Get an instance of the TelemetryRegister class for the catalog service.
+    Get the TelemetryRegister class for the catalog service.
     """
-    yield TelemetryRegister("catalog")
-
-    # Reset the register to avoid breaking other tests
-    TelemetryRegister("catalog").registry = copy.deepcopy(REGISTRIES["catalog"])
-
-
-@fixture(scope="session")
-def payu_register():
-    """
-    Get an instance of the TelemetryRegister class for the catalog service.
-    """
-    yield TelemetryRegister("payu")
-
-    # Reset the register to avoid breaking other tests
-    TelemetryRegister("payu").registry = copy.deepcopy(REGISTRIES.get("payu", {}))
+    yield TelemetryRegister
+    TelemetryRegister._instances = {}

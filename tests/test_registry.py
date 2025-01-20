@@ -8,7 +8,7 @@ from pydantic import ValidationError
 import pytest
 
 
-def test_telemetry_register_unique():
+def test_telemetry_register_unique(reset_telemetry_register):
     """
     Check that the TelemetryRegister class is a singleton & that we can register
     and deregister functions as we would expect.
@@ -48,11 +48,8 @@ def test_telemetry_register_unique():
         "DfFileCatalog.search",
     }
 
-    TelemetryRegister._instances = {}
 
-
-def test_telemetry_register_validation():
-    TelemetryRegister._instances = {}
+def test_telemetry_register_validation(reset_telemetry_register):
     session_register = TelemetryRegister("catalog")
 
     with pytest.raises(ValidationError):
@@ -88,5 +85,3 @@ def test_telemetry_register_validation():
         assert func_str in repr(session_register)
 
     assert "test_function" not in session_register
-
-    TelemetryRegister._instances = {}

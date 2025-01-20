@@ -7,7 +7,7 @@ import pytest
 import asyncio
 
 
-def test_ipy_register_func():
+def test_ipy_register_func(api_handler, reset_telemetry_register):
     """
     Make sure that the decorator registers the function correctly.
     """
@@ -39,13 +39,9 @@ def test_ipy_register_func():
 
     register.deregister(my_func.__name__)
 
-    # Reset the api_handler and register to avoid breaking other tests
-    api_handler._instance = None
-    register._instances = {}
-
 
 @pytest.mark.asyncio
-async def test_register_func():
+async def test_register_func(api_handler, reset_telemetry_register):
     """
     Use the register_func decorator factory to register a function.
     """
@@ -87,7 +83,3 @@ async def test_register_func():
     # Reset the register to avoid breaking other tests
 
     register.deregister(my_func.__name__)
-
-    # Reset the api_handler and register to avoid breaking other tests
-    api_handler._instance = None
-    register._instances = {}

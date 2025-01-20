@@ -56,6 +56,8 @@ def test_api_handler_server_url(local_host, default_url, api_handler):
     session1.server_url = local_host
     assert session2.server_url == local_host
 
+    ApiHandler._instance = None
+
 
 def test_api_handler_extra_fields(local_host, api_handler):
     """
@@ -95,7 +97,6 @@ def test_api_handler_extra_fields_validation(api_handler):
     to pass the correct types, and only let us update fields through the
     add_extra_field method.
     """
-    api_handler = api_handler
 
     # Mock a couple of extra services
 
@@ -123,7 +124,6 @@ def test_api_handler_remove_fields(api_handler):
     """
     Check that we can remove fields from the telemetry record.
     """
-    api_handler = api_handler
 
     # Pretend we only have catalog & payu services and then mock the initialisation
     # of the _extra_fields attribute
@@ -165,7 +165,6 @@ def test_api_handler_send_api_request_no_loop(local_host, api_handler):
     Create and send an API request with telemetry data.
     """
 
-    api_handler = api_handler
     api_handler.server_url = local_host
 
     # Pretend we only have catalog & payu services and then mock the initialisation
@@ -218,8 +217,6 @@ def test_api_handler_invalid_endpoint(api_handler):
     Create and send an API request with telemetry data.
     """
 
-    api_handler = api_handler
-
     # Pretend we only have catalog & payu services and then mock the initialisation
     # of the _extra_fields attribute
 
@@ -240,3 +237,6 @@ def test_api_handler_invalid_endpoint(api_handler):
         )
 
     assert "Endpoint for 'payu' not found " in str(excinfo.value)
+
+    ApiHandler._instance = None
+    api_handler._instance = None

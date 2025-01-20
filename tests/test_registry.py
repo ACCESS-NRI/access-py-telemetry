@@ -13,6 +13,7 @@ def test_telemetry_register_unique(reset_telemetry_register):
     Check that the TelemetryRegister class is a singleton & that we can register
     and deregister functions as we would expect.
     """
+    TelemetryRegister._instances = {}
     session1 = TelemetryRegister("catalog")
     session2 = TelemetryRegister("catalog")
 

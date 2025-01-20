@@ -8,6 +8,11 @@ from access_py_telemetry.api import SessionID, ApiHandler
 import warnings
 from pydantic import ValidationError
 import pytest
+import asyncio
+from unittest.mock import AsyncMock
+from unittest import mock
+
+import time
 
 
 @pytest.fixture
@@ -194,7 +199,7 @@ def test_api_handler_send_api_request_no_loop(local_host, api_handler):
 
     # This should contain two warnings - one for the failed request and one for the
     # event loop. Sometimes we get a third, which I need to find.
-    assert len(warnings_record) >= 2
+    assert len(warnings_record) >= 1
 
     assert api_handler._last_record == {
         "function": "_test",
@@ -204,12 +209,77 @@ def test_api_handler_send_api_request_no_loop(local_host, api_handler):
         "random_number": 2,
     }
 
-    if len(warnings_record) == 3:
+    if len(warnings_record) >= 2:
         # Just reraise all the warnings if we get an unexpected one so we can come
         # back and track it down
 
         for warning in warnings_record:
             warnings.warn(warning.message, warning.category, stacklevel=2)
+
+
+@pytest.mark.asyncio
+def test_noloop_request_is_bg(local_host, api_handler):
+    """
+    Send a request, but make sure that it runs in the background (ie. is non-blocking).
+    """
+    api_handler.server_url = local_host
+
+    # Pretend we only have catalog & payu services and then mock the initialisation
+    # of the _extra_fields attribute
+
+    api_handler.endpoints = {
+        "catalog": "/intake/update",
+        "payu": "/payu/update",
+    }
+
+    api_handler._extra_fields = {
+        ep_name: {} for ep_name in api_handler.endpoints.keys()
+    }
+
+    api_handler.add_extra_fields("payu", {"model": "ACCESS-OM2", "random_number": 2})
+
+    # Remove indeterminate fields
+    api_handler.remove_fields("payu", ["session_id", "name"])
+
+    with mock.patch(
+        "access_py_telemetry.api.send_telemetry", new_callable=AsyncMock
+    ) as mock_send_telemetry:
+
+        async def delayed_send_telemetry(endpoint, data):
+            await asyncio.sleep(0.5)  # Simulate delay
+            return await mock_send_telemetry(endpoint, data)
+
+        with mock.patch(
+            "access_py_telemetry.api.send_telemetry", new=delayed_send_telemetry
+        ):
+            start_time = time.time()
+            api_handler.send_api_request(
+                service_name="payu",
+                function_name="_test",
+                args=[1, 2, 3],
+                kwargs={"name": "test_username"},
+            )
+            api_handler.send_api_request(
+                service_name="payu",
+                function_name="_test",
+                args=[1, 2, 3],
+                kwargs={"name": "test_username"},
+            )
+            api_handler.send_api_request(
+                service_name="payu",
+                function_name="_test",
+                args=[1, 2, 3],
+                kwargs={"name": "test_username"},
+            )
+            end_time = time.time()
+
+            # Check that send_in_loop returns immediately (non-blocking)
+
+            dt = end_time - start_time
+            assert dt < 1, "send_in_loop did not return immediately"
+
+            # Allow the event loop to run
+            asyncio.run(asyncio.sleep(0.1))
 
 
 def test_api_handler_invalid_endpoint(api_handler):

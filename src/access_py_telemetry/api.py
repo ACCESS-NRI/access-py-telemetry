@@ -12,6 +12,7 @@ import httpx
 import asyncio
 import pydantic
 import yaml
+import concurrent.futures
 from pathlib import Path
 
 S = TypeVar("S", bound="SessionID")
@@ -251,8 +252,8 @@ def send_in_loop(endpoint: str, telemetry_data: dict[str, Any]) -> None:
     """
     Wraps the send_telemetry function in an event loop. This function will:
     - Check if an event loop is already running
-    - Create a new event loop if one is not running
-    - Send the telemetry data
+    - If an event loop is running, send the telemetry data in the background
+    - If an event loop is not running, create a new event loop and send the telemetry data
 
     Parameters
     ----------
@@ -265,26 +266,21 @@ def send_in_loop(endpoint: str, telemetry_data: dict[str, Any]) -> None:
     -------
     None
 
-    Warnings
-    --------
-    RuntimeWarning
-        If the event loop is not running, telemetry will block execution.
     """
 
-    # Check if there's an existing event loop, otherwise create a new one
     try:
         loop = asyncio.get_running_loop()
+        loop.create_task(send_telemetry(endpoint, telemetry_data))
     except RuntimeError:
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
-
-    if loop.is_running():
-        loop.create_task(send_telemetry(endpoint, telemetry_data))
-    else:
-        # breakpoint()
-        # loop.create_task(send_telemetry(telemetry_data))
-        loop.run_until_complete(send_telemetry(endpoint, telemetry_data))
-        warnings.warn(
-            "Event loop not running, telemetry will block execution",
-            category=RuntimeWarning,
+        future = asyncio.run_coroutine_threadsafe(
+            send_telemetry(endpoint, telemetry_data), loop
         )
+        # Optionally, handle the result or exception of the future
+        try:
+            future.result(timeout=0.1)  # Wait for the coroutine to finish
+        except concurrent.futures.TimeoutError:
+            print("The coroutine took too long to complete")
+        except Exception as exc:
+            print(f"The coroutine raised an exception: {exc}")

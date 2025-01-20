@@ -21,10 +21,9 @@ def api_handler():
 
 
 @fixture
-def clean_telemetry_register():
+def reset_telemetry_register():
     """
     Get the TelemetryRegister class for the catalog service.
     """
-    TelemetryRegister._instances = {}
     yield TelemetryRegister
     TelemetryRegister._instances = {}

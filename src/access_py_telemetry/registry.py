@@ -4,19 +4,11 @@ SPDX-License-Identifier: Apache-2.0
 """
 
 from typing import Type, TypeVar, Iterator, Callable, Any
-from pathlib import Path
 import pydantic
-import yaml
 import copy
+from .utils import REGISTRIES
 
 T = TypeVar("T", bound="TelemetryRegister")
-
-with open(Path(__file__).parent / "config.yaml", "r") as f:
-    config = yaml.safe_load(f)
-
-REGISTRIES = {
-    registry: set(content.get("items")) for registry, content in config.items()
-}
 
 
 class RegisterWarning(UserWarning):
@@ -33,8 +25,6 @@ class TelemetryRegister:
     this class is going to be a singleton so that we can register functions to it
     from anywhere and have them persist across all telemetry calls.
 
-    This doesn't actually work - we are going to need one registry per service, so
-    we can't use a singleton here. We'll need to refactor this later.
     """
 
     # Set of registered functions for now - we can add more later or dynamically

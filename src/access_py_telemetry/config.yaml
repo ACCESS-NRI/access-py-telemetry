@@ -1,10 +1,10 @@
-catalog:
-  endpoint: /intake/update
-  items:
+intake:
+  catalog:
     - esm_datastore.search
     - DfFileCatalog.search
     - DfFileCatalog.__getitem__
 payu: 
-  endpoint: /payu/update
-  items:
+  run: 
     - Experiment.run
+  restart:
+    - Experiment.restart

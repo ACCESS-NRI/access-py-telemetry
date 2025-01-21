@@ -13,6 +13,7 @@ import asyncio
 import pydantic
 import yaml
 from pathlib import Path
+from .utils import ENDPOINTS, REGISTRIES
 
 S = TypeVar("S", bound="SessionID")
 H = TypeVar("H", bound="ApiHandler")
@@ -20,8 +21,6 @@ H = TypeVar("H", bound="ApiHandler")
 with open(Path(__file__).parent / "config.yaml", "r") as f:
     config = yaml.safe_load(f)
 
-ENDPOINTS = {registry: content.get("endpoint") for registry, content in config.items()}
-REGISTRIES = {registry for registry in config.keys()}
 SERVER_URL = "https://tracking-services-d6c2fd311c12.herokuapp.com"
 
 
@@ -36,11 +35,9 @@ class ApiHandler:
 
     _instance = None
     _server_url = SERVER_URL[:]
-    endpoints = {key: val for key, val in ENDPOINTS.items()}
-    registries = {key for key in REGISTRIES}
-    _extra_fields: dict[str, dict[str, Any]] = {
-        ep_name: {} for ep_name in ENDPOINTS.keys()
-    }
+    endpoints = {service: endpoint for service, endpoint in ENDPOINTS.items()}
+    registries = {service for service in REGISTRIES}
+    _extra_fields: dict[str, dict[str, Any]] = {ep_name: {} for ep_name in ENDPOINTS}
     _pop_fields: dict[str, list[str]] = {}
 
     def __new__(cls: Type[H]) -> H:

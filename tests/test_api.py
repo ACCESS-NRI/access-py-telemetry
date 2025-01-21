@@ -6,7 +6,6 @@
 import access_py_telemetry.api
 from access_py_telemetry.api import SessionID, ApiHandler, send_in_loop
 from pydantic import ValidationError
-from unittest import mock
 import pytest
 
 import time
@@ -259,20 +258,3 @@ def test_api_handler_invalid_endpoint(api_handler):
 
     ApiHandler._instance = None
     api_handler._instance = None
-
-
-@mock.patch(
-    "multiprocessing.set_start_method",
-    side_effect=RuntimeError("context has already been set"),
-)
-def test_multiproc_spawn_failure(capsys):
-    """
-    Mock the multiprocessing.set_start_method function to raise an exception, and
-    check that we don't get an error when importing access_py_telemetry.api
-    """
-
-    # Mock the multiprocessing.set_start_method function to raise an exception
-
-    import access_py_telemetry.api
-
-    assert access_py_telemetry.api

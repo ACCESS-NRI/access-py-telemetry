@@ -25,7 +25,6 @@ except RuntimeError:
     isn't already set. In this case, we just ignore the error - the processes should
     still work fine.
     """
-    pass
 
 S = TypeVar("S", bound="SessionID")
 H = TypeVar("H", bound="ApiHandler")
@@ -100,11 +99,14 @@ class ApiHandler:
         return self._pop_fields
 
     @pydantic.validate_call
-    def remove_fields(self, service: str, fields: Iterable[str]) -> None:
+    def remove_fields(self, service: str, fields: str | Iterable[str]) -> None:
         """
         Set the fields to remove from the telemetry data for a given service. Useful for excluding default
         fields that are not needed for a particular telemetry call: eg, removing
         Session tracking if a CLI is being used.
+
+        Note: This does not use a set union, so you must specify all fields you want to remove in one call.
+        # TODO: Maybe make this easier to use?
         """
         if isinstance(fields, str):
             fields = [fields]

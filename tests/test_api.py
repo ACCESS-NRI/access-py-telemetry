@@ -6,6 +6,7 @@
 import access_py_telemetry.api
 from access_py_telemetry.api import SessionID, ApiHandler, send_in_loop
 from pydantic import ValidationError
+from unittest import mock
 import pytest
 
 import time
@@ -160,6 +161,52 @@ def test_api_handler_remove_fields(api_handler):
 
     assert api_handler._pop_fields == {"payu": ["session_id"]}
 
+    # Now remove the 'model' field from the payu record, as a string.
+    api_handler.remove_fields("payu", "model")
+
+
+def test_api_handler_send_api_request(api_handler, capsys):
+    """
+    Create and send an API request with telemetry data - just to make sure that
+    the request is being sent correctly.
+    """
+    api_handler.server_url = "http://dud/host/endpoint"
+
+    # Pretend we only have catalog & payu services and then mock the initialisation
+    # of the _extra_fields attribute
+
+    api_handler.endpoints = {
+        "catalog": "/intake/update",
+        "payu": "/payu/update",
+    }
+
+    api_handler._extra_fields = {
+        ep_name: {} for ep_name in api_handler.endpoints.keys()
+    }
+
+    api_handler.add_extra_fields("payu", {"model": "ACCESS-OM2", "random_number": 2})
+
+    # Remove indeterminate fields
+    api_handler.remove_fields("payu", ["session_id", "name"])
+
+    # We should get a warning because we've used a dud url, but pytest doesn't
+    # seem to capture subprocess warnings. I'm not sure there is really a good
+    # way test for this.
+    api_handler.send_api_request(
+        service_name="payu",
+        function_name="_test",
+        args=[1, 2, 3],
+        kwargs={"name": "test_username"},
+    )
+
+    assert api_handler._last_record == {
+        "function": "_test",
+        "args": [1, 2, 3],
+        "kwargs": {"name": "test_username"},
+        "model": "ACCESS-OM2",
+        "random_number": 2,
+    }
+
 
 def test_send_in_loop_is_bg():
     """
@@ -212,3 +259,20 @@ def test_api_handler_invalid_endpoint(api_handler):
 
     ApiHandler._instance = None
     api_handler._instance = None
+
+
+@mock.patch(
+    "multiprocessing.set_start_method",
+    side_effect=RuntimeError("context has already been set"),
+)
+def test_multiproc_spawn_failure(capsys):
+    """
+    Mock the multiprocessing.set_start_method function to raise an exception, and
+    check that we don't get an error when importing access_py_telemetry.api
+    """
+
+    # Mock the multiprocessing.set_start_method function to raise an exception
+
+    import access_py_telemetry.api
+
+    assert access_py_telemetry.api

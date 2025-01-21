@@ -131,3 +131,6 @@ max-complexity = 18
 
 [tool.ruff.isort]
 known-first-party = ["access_py_telemetry"]
+
+[tool.pytest.ini_options]
+asyncio_default_fixture_loop_scope = "function"

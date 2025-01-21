@@ -93,7 +93,9 @@ In this example, there are three endpoints:
 1. `intake/catalog`
 2. `payu/run`
 3. `payu/restart`
+
 which track the corresponding sets of functions:
+
 1. `{esm_datastore.search, DfFileCatalog.search, DfFileCatalog.__getitem__}`
 2. `{Experiment.run}`
 3. `{Experiment.restart}`

@@ -53,7 +53,7 @@ If this package is used within a Jupyter notebook, telemetry calls will be made 
 
 Outside a Jupyter notebook, telemetry calls will be made in a new python process using the multiprocessing module, and so will be non-blocking but may have a small overhead.
 
-![PyPI version](https://img.shields.io/pypi/v/access_py_telemetry.svg)
+![PyPI version](https://img.shields.io/pypi/v/access-py-telemetry.svg)
 ![Build Status](https://img.shields.io/travis/access-nri/access_py_telemetry.svg)
 ![Documentation Status](https://readthedocs.org/projects/access-py-telemetry/badge/?version=latest)
 

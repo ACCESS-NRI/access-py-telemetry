@@ -14,8 +14,8 @@ def test_telemetry_register_unique(reset_telemetry_register):
     and deregister functions as we would expect.
     """
     TelemetryRegister._instances = {}
-    session1 = TelemetryRegister("catalog")
-    session2 = TelemetryRegister("catalog")
+    session1 = TelemetryRegister("intake_catalog")
+    session2 = TelemetryRegister("intake_catalog")
 
     # assert session1 is session2
 
@@ -36,7 +36,7 @@ def test_telemetry_register_unique(reset_telemetry_register):
 
     session1.deregister("test_function", "DfFileCatalog.__getitem__")
 
-    session3 = TelemetryRegister("catalog")
+    session3 = TelemetryRegister("intake_catalog")
 
     assert set(session3) == {
         "esm_datastore.search",
@@ -50,7 +50,7 @@ def test_telemetry_register_unique(reset_telemetry_register):
 
 
 def test_telemetry_register_validation(reset_telemetry_register):
-    session_register = TelemetryRegister("catalog")
+    session_register = TelemetryRegister("intake_catalog")
 
     with pytest.raises(ValidationError):
         session_register.register(1.0)

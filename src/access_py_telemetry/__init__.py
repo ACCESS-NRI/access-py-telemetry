@@ -11,8 +11,9 @@ from IPython.core.interactiveshell import InteractiveShell
 
 from . import _version
 from .ast import capture_registered_calls
-from .api import SessionID, ENDPOINTS  # noqa
-from .registry import REGISTRIES, RegisterWarning
+from .api import SessionID  # noqa
+from .registry import RegisterWarning
+from .utils import ENDPOINTS, REGISTRIES
 
 
 # Make sure that our registries & endpoints match up

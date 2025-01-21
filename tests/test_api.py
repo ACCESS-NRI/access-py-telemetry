@@ -74,15 +74,20 @@ def test_api_handler_extra_fields(local_host, api_handler):
     with pytest.raises(AttributeError):
         session1.extra_fields = {"catalog_version": "1.0"}
 
-    session1.add_extra_fields("catalog", {"version": "1.0"})
+    XF_NAME = "intake_catalog"
 
-    blank_registries = {key: {} for key in session1.registries if key != "catalog"}
+    session1.add_extra_fields(XF_NAME, {"version": "1.0"})
 
-    assert session2.extra_fields == {"catalog": {"version": "1.0"}, **blank_registries}
+    blank_registries = {key: {} for key in session1.registries if key != XF_NAME}
+
+    assert session2.extra_fields == {
+        "intake_catalog": {"version": "1.0"},
+        **blank_registries,
+    }
 
     with pytest.raises(KeyError) as excinfo:
-        session1.add_extra_fields("catalogue", {"version": "2.0"})
-        assert str(excinfo.value) == "Endpoint catalogue not found"
+        session1.add_extra_fields("catalog", {"version": "2.0"})
+        assert str(excinfo.value) == "Endpoint catalog not found"
 
     # Make sure that adding a new sesson doesn't overwrite the old one
     session3 = ApiHandler()
@@ -221,7 +226,7 @@ def test_api_handler_invalid_endpoint(api_handler):
     # of the _extra_fields attribute
 
     api_handler.endpoints = {
-        "catalog": "/intake/update",
+        "intake_catalog": "/intake/catalog",
     }
 
     api_handler._extra_fields = {

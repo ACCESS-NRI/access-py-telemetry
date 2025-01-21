@@ -9,7 +9,8 @@ from IPython.core.getipython import get_ipython
 from IPython.core.interactiveshell import ExecutionInfo
 
 from .api import ApiHandler
-from .registry import TelemetryRegister, REGISTRIES
+from .registry import TelemetryRegister
+from .utils import REGISTRIES
 
 
 api_handler = ApiHandler()

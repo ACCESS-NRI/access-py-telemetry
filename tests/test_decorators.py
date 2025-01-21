@@ -13,7 +13,7 @@ def test_ipy_register_func(api_handler, reset_telemetry_register):
     """
 
     @ipy_register_func(
-        service="catalog",
+        service="intake_catalog",
         extra_fields={"model": "ACCESS-OM2", "random_number": 2},
         pop_fields=["session_id"],
     )
@@ -22,16 +22,18 @@ def test_ipy_register_func(api_handler, reset_telemetry_register):
 
     my_func()
 
-    register = TelemetryRegister("catalog")
+    register = TelemetryRegister("intake_catalog")
     api_handler = ApiHandler()
-    blank_registries = {key: {} for key in api_handler.registries if key != "catalog"}
+    blank_registries = {
+        key: {} for key in api_handler.registries if key != "intake_catalog"
+    }
 
     assert api_handler.extra_fields == {
-        "catalog": {"model": "ACCESS-OM2", "random_number": 2},
+        "intake_catalog": {"model": "ACCESS-OM2", "random_number": 2},
         **blank_registries,
     }
 
-    assert api_handler.pop_fields == {"catalog": ["session_id"]}
+    assert api_handler.pop_fields == {"intake_catalog": ["session_id"]}
 
     assert my_func.__name__ in register
 
@@ -47,24 +49,26 @@ async def test_register_func(api_handler, reset_telemetry_register):
     """
 
     @register_func(
-        service="catalog",
+        service="intake_catalog",
         extra_fields={"model": "ACCESS-OM2", "random_number": 2},
         pop_fields=["session_id"],
     )
     def my_func():
         pass
 
-    register = TelemetryRegister("catalog")
+    register = TelemetryRegister("intake_catalog")
     api_handler = ApiHandler()
 
-    blank_registries = {key: {} for key in api_handler.registries if key != "catalog"}
+    blank_registries = {
+        key: {} for key in api_handler.registries if key != "intake_catalog"
+    }
 
     assert api_handler.extra_fields == {
-        "catalog": {"model": "ACCESS-OM2", "random_number": 2},
+        "intake_catalog": {"model": "ACCESS-OM2", "random_number": 2},
         **blank_registries,
     }
 
-    assert api_handler.pop_fields == {"catalog": ["session_id"]}
+    assert api_handler.pop_fields == {"intake_catalog": ["session_id"]}
 
     assert my_func.__name__ in register
 

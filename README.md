@@ -51,7 +51,7 @@ This needs to be added to the system config for ipython, or it can be added to y
 
 If this package is used within a Jupyter notebook, telemetry calls will be made asynchronously, so as to not block the execution of the notebook. This means that the telemetry calls will be made in the background, and will not affect the performance of the notebook.
 
-If you are using this in a REPL, telemetry calls are currently synchronous, and will block the execution of the code until the telemetry call is made. This will be fixed in a future release.
+Outside a Jupyter notebook, telemetry calls will be made in a new python process using the multiprocessing module, and so will be non-blocking but may have a small overhead.
 
 ![PyPI version](https://img.shields.io/pypi/v/access_py_telemetry.svg)
 ![Build Status](https://img.shields.io/travis/access-nri/access_py_telemetry.svg)
@@ -68,13 +68,76 @@ Contains IPython extensions to automatically add telemetry to catalog usage.
 
 ### Registering & deregistering functions for telemetry
 
+#### The TelemetryRegister class
+
+The `TelemetryRegister` class is used to register and deregister functions for telemetry. By default, it will read from `config.yaml` to get the list of functions to register. 
+
+A sample `config.yaml` file is shown below:
+
+```yaml
+intake:
+  catalog:
+    - esm_datastore.search
+    - DfFileCatalog.search
+    - DfFileCatalog.__getitem__
+payu:
+  run:
+    - Experiment.run
+  restart:
+    - Experiment.restart
+```
+
+This config file has two main purposes: to provide a list of function calls which ought to be tracked, and to specify where the telemetry data should be sent.
+
+In this example, there are three endpoints:
+1. `intake/catalog`
+2. `payu/run`
+3. `payu/restart`
+which track the corresponding sets of functions:
+1. `{esm_datastore.search, DfFileCatalog.search, DfFileCatalog.__getitem__}`
+2. `{Experiment.run}`
+3. `{Experiment.restart}`
+
+*Service Names* are built from the config file, and are built by replacing the `/` with a `_` in the endpoint name - ie.
+1. `intake_catalog` <=> `intake/catalog`
+2. `payu_run` <=> `payu/run`
+3. `payu_restart` <=> `payu/restart`
+
+Typically, the top level part service name (eg. `intake`) will correspond to both a Django app and a single client side package (eg. intake, Payu, etc that you wish to track), and the rest of the endpoint will correspond to a view within that app. For example, if you had a package named `executor` for which you wanted to track `run` and `save_results` functions in separate tables, you would have the following config:
+```yaml
+executor:
+  run:
+    - executor.run
+  save_results:
+    - executor.save_results
+```
+
+The corresponding models in the `tracking_services` Django app would be `ExecutorRun` and `ExecutorSaveResults`: 
+
+```python
+class ExecutorRun(models.Model):
+    function_name = models.CharField(max_length=255)
+    args = JSONField()
+    kwargs = JSONField()
+    session_id = models.CharField(max_length=255)
+    interesting_data = JSONField()
+    timestamp = models.DateTimeField(auto_now_add=True)
+
+class ExecutorSaveResults(models.Model):
+    function_name = models.CharField(max_length=255)
+    args = JSONField()
+    kwargs = JSONField()
+    session_id = models.CharField(max_length=255)
+    timestamp = models.DateTimeField(auto_now_add=True)
+    save_filesize = models.IntegerField()
+    user_id = models.CharField(max_length=255)
+    execution_time = models.FloatField()
+    memory_usage = models.FloatField()
+    cpu_usage = models.FloatField()
+```
+
+
 To add a function to the list of functions about which usage information is collected when telemetry is enabled, use the `TelemetryRegister` class, and it's `register` method. You can pass the function name as a string, or the function itself.
-
-> **Important** 
-> ___
-> Each `service` corresponds to a single `endpoint` in the tracking services app. 
-> This is something of a misnomer, and will eventually be renamed to something more appropriate.
-
 
 ```python
 from access_py_telemetry.registry import TelemetryRegister
@@ -132,7 +195,7 @@ def my_func():
 Specifying the `extra_fields` argument will add additional fields to the telemetry data sent to the endpoint. Alternatively, these can be added later:
 ```python
 
-from access_py_telemetry.utils import ApiHandler
+from access_py_telemetry.api import ApiHandler
 from access_py_telemetry.decorators import ipy_register_func
 
 @ipy_register_func("my_service")
@@ -145,10 +208,10 @@ api_handler.add_extra_field("my_service", {"interesting_data": interesting_data}
 
 Adding fields later may sometimes be necessary, as the data may not be available at the time of registration/function definition, but will be when the function is called.
 
-We can also remove fields from the telemetry data, using the `pop_fields` method. This might be handy for example, if you want to remove a default field. For example, telemetry will include a session ID (bound to the Python interpreter lifetime) by default - if you are writing a CLI tool, you may want to remove this field.
+We can also remove fields from the telemetry data, using the `pop_fields` method. This might be handy for example, if you want to remove a default field. For example, telemetry will include a session ID (bound to the Python interpreter lifetime) by default - if you are writing a CLI tool, you will probably want to remove this field.
 
 ```python
-from access_py_telemetry.utils import ApiHandler
+from access_py_telemetry.api import ApiHandler
 from access_py_telemetry.decorators import register_func
 
 @register_func("my_service", extra_fields = [{"cli_config" : ...}, {"interesting_data" : ...}])
@@ -183,8 +246,8 @@ def my_func():
 ### Checking registry
 (Assuming `my_func` has been registered as above)
 ```python
->>> cat_registry = TelemetryRegister('catalog')
->>> print(cat_registry)
+>>> intake_registry = TelemetryRegister('intake_catalog')
+>>> print(intake_registry)
 ["esm_datastore.search", "DfFileCatalog.search", "DfFileCatalog.__getitem__"]
 >>> my_registry = TelemetryRegister('my_service')
 >>> print(my_registry)
@@ -195,19 +258,19 @@ def my_func():
 
 When you are happy with your telemetry configuration, you can update the default registry with your custom registry. This should be done via a PR, in which you update the `registry.yaml` file with your addtional functionality to track:
 
+In the case of `my_service`, you would add the following to `registry.yaml`:
+
 ```yaml
-catalog:
-  endpoint: /intake/update
-  items:
+intake:
+  catalog:
     - esm_datastore.search
     - DfFileCatalog.search
     - DfFileCatalog.__getitem__
 
-+ my_service:
-+     endpoint: /my_service/endpoint
-+     items:
-+         - my_func
-+         - my_other_func
++ my:
++   service:
++     - my_func
++     - my_other_func
 ```
 
 
@@ -224,7 +287,7 @@ Presently, please raise an issue on the [tracking-services](https://github.com/A
 __Once you have an endpoint__, you can send telemetry using the `ApiHandler` class.
 
 ```python
-from access_py_telemetry.utils import ApiHandler
+from access_py_telemetry.api import ApiHandler
 
 from xyz import interesting_data
 
@@ -259,7 +322,7 @@ The `ApiHandler` class will send telemetry data to the endpoint you specify. To 
 ```
 If you have not registered any extra fields, the `interesting_data` field will not be present. 
 
-Configuration of extra fields, etc, should be performed as import time side effects of you code in order to ensure telemetry data is sent correctly & consistently.
+Configuration of extra fields, etc, should be performed as import time side effects of you code in order to ensure telemetry data are sent correctly & consistently.
 
 #### Implementation details
 
@@ -267,7 +330,7 @@ The `ApiHandler` class is a singleton, so if you want to configure extra fields 
 
 eg. `myservice/component1.py`
 ```python
-from access_py_telemetry.utils import ApiHandler
+from access_py_telemetry.api import ApiHandler
 api_handler = ApiHandler()
 
 service_component1_config = {
@@ -278,7 +341,7 @@ api_handler.add_extra_field("myservice", service_component1_config)
 ```
 and `myservice/component2.py`
 ```python
-from access_py_telemetry.utils import ApiHandler
+from access_py_telemetry.api import ApiHandler
 api_handler = ApiHandler()
 
 service_component2_config = {
@@ -311,7 +374,7 @@ Then, when telemetry is sent, you will see the `component_1_config` and `compone
 
 In order to track user sessions, this package uses a Session Identifier, generated using the SessionID class:
 ```python
->>> from access_py_telemetry.utils import SessionID
+>>> from access_py_telemetry.api import SessionID
 
 >>> session_id = SessionID()
 >>> session_id
@@ -371,3 +434,4 @@ Note that the date is the first time the project is created.
 The date signifies the year from which the copyright notice applies. **NEVER** replace with a later year, only ever add later years or a year range. 
 
 It is not necessary to include subsequent years in the copyright statement at all unless updates have been made at a later time, and even then it is largely discretionary: they are not necessary as copyright is contingent on the lifespan of copyright holder +50 years as per the [Berne Convention](https://en.wikipedia.org/wiki/Berne_Convention).
+

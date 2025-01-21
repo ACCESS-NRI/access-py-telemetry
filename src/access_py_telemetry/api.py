@@ -12,7 +12,19 @@ import httpx
 import asyncio
 import pydantic
 import yaml
+import multiprocessing
 from pathlib import Path
+from multiprocessing import Process
+
+try:
+    multiprocessing.set_start_method("spawn")
+except RuntimeError:
+    """
+    Since this is a side effect on module import, we can't guarantee that it will
+    always be called before the first Process is created, or that the start method
+    isn't already set. In this case, we just ignore the error - the processes should
+    still work fine.
+    """
 from .utils import ENDPOINTS, REGISTRIES
 
 S = TypeVar("S", bound="SessionID")
@@ -84,11 +96,14 @@ class ApiHandler:
         return self._pop_fields
 
     @pydantic.validate_call
-    def remove_fields(self, service: str, fields: Iterable[str]) -> None:
+    def remove_fields(self, service: str, fields: str | Iterable[str]) -> None:
         """
         Set the fields to remove from the telemetry data for a given service. Useful for excluding default
         fields that are not needed for a particular telemetry call: eg, removing
         Session tracking if a CLI is being used.
+
+        Note: This does not use a set union, so you must specify all fields you want to remove in one call.
+        # TODO: Maybe make this easier to use?
         """
         if isinstance(fields, str):
             fields = [fields]
@@ -244,12 +259,50 @@ async def send_telemetry(endpoint: str, data: dict[str, Any]) -> None:
     return None
 
 
-def send_in_loop(endpoint: str, telemetry_data: dict[str, Any]) -> None:
+def send_in_loop(
+    endpoint: str, telemetry_data: dict[str, Any], timeout: float | None = None
+) -> None:
     """
     Wraps the send_telemetry function in an event loop. This function will:
     - Check if an event loop is already running
-    - Create a new event loop if one is not running
+    - If an event loop is running, send the telemetry data in the background
+    - If an event loop is not running, create a new event loop in a separate process
+        and send the telemetry data in the background using that loop.
+
+    Parameters
+    ----------
+    endpoint : str
+        The URL to send the telemetry data to.
+    telemetry_data : dict
+        The telemetry data to send.
+    timeout : float, optional
+        The maximum time to wait for the coroutine to finish. If the coroutine takes
+        longer than this time, a TimeoutError will be raised. If None, the coroutine
+        will terminate after 60 seconds.
+
+    Returns
+    -------
+    None
+
+    """
+    timeout = timeout or 60
+
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        _run_in_proc(endpoint, telemetry_data, timeout)
+    else:
+        loop.create_task(send_telemetry(endpoint, telemetry_data))
+        return None
+
+
+def _run_event_loop(endpoint: str, telemetry_data: dict[str, Any]) -> None:
+    """
+    Handles the creation and running of an event loop for sending telemetry data.
+    This function is intended to be run in a separate process, and will:
+    - Create a new event loop
     - Send the telemetry data
+    - Run the event loop until the telemetry data is sent
 
     Parameters
     ----------
@@ -261,27 +314,43 @@ def send_in_loop(endpoint: str, telemetry_data: dict[str, Any]) -> None:
     Returns
     -------
     None
-
-    Warnings
-    --------
-    RuntimeWarning
-        If the event loop is not running, telemetry will block execution.
     """
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    loop.run_until_complete(send_telemetry(endpoint, telemetry_data))
 
-    # Check if there's an existing event loop, otherwise create a new one
-    try:
-        loop = asyncio.get_running_loop()
-    except RuntimeError:
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
 
-    if loop.is_running():
-        loop.create_task(send_telemetry(endpoint, telemetry_data))
-    else:
-        # breakpoint()
-        # loop.create_task(send_telemetry(telemetry_data))
-        loop.run_until_complete(send_telemetry(endpoint, telemetry_data))
+def _run_in_proc(endpoint: str, telemetry_data: dict[str, Any], timeout: float) -> None:
+    """
+    Handles the creation and running of a separate process for sending telemetry data.
+    This function will:
+    - Create a new process and run the _run_event_loop function in that process
+    - Wait for the process to finish
+    - If the process takes longer than the specified timeout, terminate the process
+        and raise a warning
+
+    Parameters
+    ----------
+    endpoint : str
+        The URL to send the telemetry data to.
+    telemetry_data : dict
+        The telemetry data to send.
+    timeout : float
+        The maximum time to wait for the process to finish.
+
+    Returns
+    -------
+    None
+
+    """
+    proc = Process(target=_run_event_loop, args=(endpoint, telemetry_data))
+    proc.start()
+    proc.join(timeout)
+    if proc.is_alive():
+        proc.terminate()
         warnings.warn(
-            "Event loop not running, telemetry will block execution",
+            f"Telemetry data not sent within {timeout} seconds",
             category=RuntimeWarning,
+            stacklevel=2,
         )
+    return None

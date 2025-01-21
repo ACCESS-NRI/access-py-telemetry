@@ -4,10 +4,11 @@
 """Tests for `access_py_telemetry` package."""
 
 import access_py_telemetry.api
-from access_py_telemetry.api import SessionID, ApiHandler
-import warnings
+from access_py_telemetry.api import SessionID, ApiHandler, send_in_loop
 from pydantic import ValidationError
 import pytest
+
+import time
 
 
 @pytest.fixture
@@ -164,13 +165,16 @@ def test_api_handler_remove_fields(api_handler):
 
     assert api_handler._pop_fields == {"payu": ["session_id"]}
 
+    # Now remove the 'model' field from the payu record, as a string.
+    api_handler.remove_fields("payu", "model")
 
-def test_api_handler_send_api_request_no_loop(local_host, api_handler):
-    """
-    Create and send an API request with telemetry data.
-    """
 
-    api_handler.server_url = local_host
+def test_api_handler_send_api_request(api_handler, capsys):
+    """
+    Create and send an API request with telemetry data - just to make sure that
+    the request is being sent correctly.
+    """
+    api_handler.server_url = "http://dud/host/endpoint"
 
     # Pretend we only have catalog & payu services and then mock the initialisation
     # of the _extra_fields attribute
@@ -189,17 +193,15 @@ def test_api_handler_send_api_request_no_loop(local_host, api_handler):
     # Remove indeterminate fields
     api_handler.remove_fields("payu", ["session_id", "name"])
 
-    with pytest.warns(RuntimeWarning) as warnings_record:
-        api_handler.send_api_request(
-            service_name="payu",
-            function_name="_test",
-            args=[1, 2, 3],
-            kwargs={"name": "test_username"},
-        )
-
-    # This should contain two warnings - one for the failed request and one for the
-    # event loop. Sometimes we get a third, which I need to find.
-    assert len(warnings_record) >= 2
+    # We should get a warning because we've used a dud url, but pytest doesn't
+    # seem to capture subprocess warnings. I'm not sure there is really a good
+    # way test for this.
+    api_handler.send_api_request(
+        service_name="payu",
+        function_name="_test",
+        args=[1, 2, 3],
+        kwargs={"name": "test_username"},
+    )
 
     assert api_handler._last_record == {
         "function": "_test",
@@ -209,12 +211,28 @@ def test_api_handler_send_api_request_no_loop(local_host, api_handler):
         "random_number": 2,
     }
 
-    if len(warnings_record) == 3:
-        # Just reraise all the warnings if we get an unexpected one so we can come
-        # back and track it down
 
-        for warning in warnings_record:
-            warnings.warn(warning.message, warning.category, stacklevel=2)
+def test_send_in_loop_is_bg():
+    """
+    Send a request, but make sure that it runs in the background (ie. is non-blocking).
+
+    There will be some overhead associated with the processes startup and teardown,
+    but we shouldn't be waiting for the requests to finish. Using a long timeout
+    and only sending 3 requests should be enough to ensure that we're not accidentally
+    testing the process startup/teardown time.
+    """
+    start_time = time.time()
+
+    for _ in range(3):
+        send_in_loop(endpoint="https://dud/endpoint", telemetry_data={}, timeout=3)
+
+    print("Requests sent")
+
+    end_time = time.time()
+
+    dt = end_time - start_time
+
+    assert dt < 4
 
 
 def test_api_handler_invalid_endpoint(api_handler):

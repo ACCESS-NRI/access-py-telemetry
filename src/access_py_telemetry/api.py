@@ -108,7 +108,9 @@ class ApiHandler:
         if timeout is None:
             self._request_timeout = None
             return None
-        elif timeout <= 0:
+        if not isinstance(timeout, (int, float)):
+            raise TypeError("Timeout must be a number")
+        elif timeout <= 0 or not isinstance(timeout, (int, float)):
             raise ValueError("Timeout must be a positive number")
 
         self._request_timeout = timeout

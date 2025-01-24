@@ -261,5 +261,23 @@ def test_api_handler_invalid_endpoint(api_handler):
 
     assert "Endpoint for 'payu' not found " in str(excinfo.value)
 
-    ApiHandler._instance = None
-    api_handler._instance = None
+
+def test_api_handler_set_timeout(api_handler):
+    """
+    Make sure that we can set the timeout for the APIHandler class, and that it
+    is either a positive float or None.
+    """
+
+    with pytest.raises(ValueError):
+        api_handler.request_timeout = -1
+
+    with pytest.raises(TypeError):
+        api_handler.request_timeout = "string"
+
+    api_handler.request_timeout = 1.0
+
+    assert api_handler.request_timeout == 1.0
+
+    api_handler.request_timeout = None
+
+    assert api_handler.request_timeout is None

@@ -4,7 +4,12 @@
 """Tests for `access_py_telemetry` package."""
 
 import access_py_telemetry.api
-from access_py_telemetry.api import SessionID, ApiHandler, send_in_loop
+from access_py_telemetry.api import (
+    SessionID,
+    ApiHandler,
+    send_in_loop,
+    _format_endpoint,
+)
 from pydantic import ValidationError
 import pytest
 
@@ -281,3 +286,32 @@ def test_api_handler_set_timeout(api_handler):
     api_handler.request_timeout = None
 
     assert api_handler.request_timeout is None
+
+
+@pytest.mark.parametrize(
+    "server_url, endpoint, expected",
+    [
+        (
+            "http://localhost:8000",
+            "/some/endpoint",
+            "http://localhost:8000/some/endpoint",
+        ),
+        (
+            "http://localhost:8000/",
+            "some/endpoint/",
+            "http://localhost:8000/some/endpoint",
+        ),
+        (
+            "https://localhost:8000",
+            "/some/endpoint",
+            "https://localhost:8000/some/endpoint",
+        ),
+        (
+            "https://localhost:8000/",
+            "some/endpoint/",
+            "https://localhost:8000/some/endpoint",
+        ),
+    ],
+)
+def test_format_endpoint(server_url, endpoint, expected):
+    assert _format_endpoint(server_url, endpoint) == expected

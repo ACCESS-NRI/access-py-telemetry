@@ -11,6 +11,7 @@ import hashlib
 import httpx
 import asyncio
 import pydantic
+import re
 import yaml
 import multiprocessing
 from pathlib import Path, PurePosixPath
@@ -171,9 +172,7 @@ class ApiHandler:
                 f"Endpoint for '{service_name}' not found in {self.endpoints}"
             ) from e
 
-        endpoint = str(PurePosixPath(self.server_url) / endpoint.lstrip("/")).replace(
-            "http:/", "http://"
-        )
+        endpoint = _format_endpoint(self.server_url, endpoint)
 
         send_in_loop(endpoint, telemetry_data, self._request_timeout)
         return None
@@ -377,3 +376,12 @@ def _run_in_proc(endpoint: str, telemetry_data: dict[str, Any], timeout: float) 
             stacklevel=2,
         )
     return None
+
+
+def _format_endpoint(server_url: str, endpoint: str) -> str:
+    """
+    Concatenates the server URL and endpoint, ensuring that there is only one
+    slash between them.
+    """
+    endpoint = str(PurePosixPath(server_url) / endpoint.lstrip("/"))
+    return re.sub(r"^(https?:/)", r"\1/", endpoint)

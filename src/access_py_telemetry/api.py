@@ -171,7 +171,9 @@ class ApiHandler:
                 f"Endpoint for '{service_name}' not found in {self.endpoints}"
             ) from e
 
-        endpoint = str(PurePosixPath(self.server_url) / endpoint.lstrip("/"))
+        endpoint = str(PurePosixPath(self.server_url) / endpoint.lstrip("/")).replace(
+            "http:/", "http://"
+        )
 
         send_in_loop(endpoint, telemetry_data, self._request_timeout)
         return None

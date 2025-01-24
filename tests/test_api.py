@@ -181,7 +181,7 @@ def test_api_handler_send_api_request(api_handler, capsys):
 
     api_handler.endpoints = {
         "catalog": "intake/update",
-        "payu": "ayu/update",
+        "payu": "payu/update",
     }
 
     api_handler._extra_fields = {

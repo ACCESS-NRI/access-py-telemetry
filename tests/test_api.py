@@ -107,8 +107,8 @@ def test_api_handler_extra_fields_validation(api_handler):
     # Mock a couple of extra services
 
     api_handler.endpoints = {
-        "catalog": "/intake/update",
-        "payu": "/payu/update",
+        "catalog": "intake/update",
+        "payu": "payu/update",
     }
 
     with pytest.raises(AttributeError):
@@ -135,8 +135,8 @@ def test_api_handler_remove_fields(api_handler):
     # of the _extra_fields attribute
 
     api_handler.endpoints = {
-        "catalog": "/intake/update",
-        "payu": "/payu/update",
+        "catalog": "intake/update",
+        "payu": "payu/update",
     }
 
     api_handler._extra_fields = {
@@ -180,8 +180,8 @@ def test_api_handler_send_api_request(api_handler, capsys):
     # of the _extra_fields attribute
 
     api_handler.endpoints = {
-        "catalog": "/intake/update",
-        "payu": "/payu/update",
+        "catalog": "intake/update",
+        "payu": "ayu/update",
     }
 
     api_handler._extra_fields = {
@@ -244,7 +244,7 @@ def test_api_handler_invalid_endpoint(api_handler):
     # of the _extra_fields attribute
 
     api_handler.endpoints = {
-        "intake_catalog": "/intake/catalog",
+        "intake_catalog": "intake/catalog",
     }
 
     api_handler._extra_fields = {

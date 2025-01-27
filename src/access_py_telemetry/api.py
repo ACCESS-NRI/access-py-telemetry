@@ -11,9 +11,10 @@ import hashlib
 import httpx
 import asyncio
 import pydantic
+import re
 import yaml
 import multiprocessing
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from multiprocessing import Process
 
 try:
@@ -51,6 +52,7 @@ class ApiHandler:
     registries = {service for service in REGISTRIES}
     _extra_fields: dict[str, dict[str, Any]] = {ep_name: {} for ep_name in ENDPOINTS}
     _pop_fields: dict[str, list[str]] = {}
+    _request_timeout = None
 
     def __new__(cls: Type[H]) -> H:
         if cls._instance is None:
@@ -94,6 +96,26 @@ class ApiHandler:
     @property
     def pop_fields(self) -> dict[str, list[str]]:
         return self._pop_fields
+
+    @property
+    def request_timeout(self) -> float | None:
+        return self._request_timeout
+
+    @request_timeout.setter
+    def request_timeout(self, timeout: float | None) -> None:
+        """
+        Set the request timeout for the telemetry API.
+        """
+        if timeout is None:
+            self._request_timeout = None
+            return None
+        if not isinstance(timeout, (int, float)):
+            raise TypeError("Timeout must be a number")
+        elif timeout <= 0 or not isinstance(timeout, (int, float)):
+            raise ValueError("Timeout must be a positive number")
+
+        self._request_timeout = timeout
+        return None
 
     @pydantic.validate_call
     def remove_fields(self, service: str, fields: str | Iterable[str]) -> None:
@@ -150,9 +172,9 @@ class ApiHandler:
                 f"Endpoint for '{service_name}' not found in {self.endpoints}"
             ) from e
 
-        endpoint = f"{self.server_url}{endpoint}"
+        endpoint = _format_endpoint(self.server_url, endpoint)
 
-        send_in_loop(endpoint, telemetry_data)
+        send_in_loop(endpoint, telemetry_data, self._request_timeout)
         return None
 
     def _create_telemetry_record(
@@ -354,3 +376,12 @@ def _run_in_proc(endpoint: str, telemetry_data: dict[str, Any], timeout: float) 
             stacklevel=2,
         )
     return None
+
+
+def _format_endpoint(server_url: str, endpoint: str) -> str:
+    """
+    Concatenates the server URL and endpoint, ensuring that there is only one
+    slash between them.
+    """
+    endpoint = str(PurePosixPath(server_url) / endpoint.lstrip("/"))
+    return re.sub(r"^(https?:/)", r"\1/", endpoint)

@@ -4,7 +4,12 @@
 """Tests for `access_py_telemetry` package."""
 
 import access_py_telemetry.api
-from access_py_telemetry.api import SessionID, ApiHandler, send_in_loop
+from access_py_telemetry.api import (
+    SessionID,
+    ApiHandler,
+    send_in_loop,
+    _format_endpoint,
+)
 from pydantic import ValidationError
 import pytest
 
@@ -107,8 +112,8 @@ def test_api_handler_extra_fields_validation(api_handler):
     # Mock a couple of extra services
 
     api_handler.endpoints = {
-        "catalog": "/intake/update",
-        "payu": "/payu/update",
+        "catalog": "intake/update",
+        "payu": "payu/update",
     }
 
     with pytest.raises(AttributeError):
@@ -135,8 +140,8 @@ def test_api_handler_remove_fields(api_handler):
     # of the _extra_fields attribute
 
     api_handler.endpoints = {
-        "catalog": "/intake/update",
-        "payu": "/payu/update",
+        "catalog": "intake/update",
+        "payu": "payu/update",
     }
 
     api_handler._extra_fields = {
@@ -180,8 +185,8 @@ def test_api_handler_send_api_request(api_handler, capsys):
     # of the _extra_fields attribute
 
     api_handler.endpoints = {
-        "catalog": "/intake/update",
-        "payu": "/payu/update",
+        "catalog": "intake/update",
+        "payu": "payu/update",
     }
 
     api_handler._extra_fields = {
@@ -244,7 +249,7 @@ def test_api_handler_invalid_endpoint(api_handler):
     # of the _extra_fields attribute
 
     api_handler.endpoints = {
-        "intake_catalog": "/intake/catalog",
+        "intake_catalog": "intake/catalog",
     }
 
     api_handler._extra_fields = {
@@ -261,5 +266,52 @@ def test_api_handler_invalid_endpoint(api_handler):
 
     assert "Endpoint for 'payu' not found " in str(excinfo.value)
 
-    ApiHandler._instance = None
-    api_handler._instance = None
+
+def test_api_handler_set_timeout(api_handler):
+    """
+    Make sure that we can set the timeout for the APIHandler class, and that it
+    is either a positive float or None.
+    """
+
+    with pytest.raises(ValueError):
+        api_handler.request_timeout = -1
+
+    with pytest.raises(TypeError):
+        api_handler.request_timeout = "string"
+
+    api_handler.request_timeout = 1.0
+
+    assert api_handler.request_timeout == 1.0
+
+    api_handler.request_timeout = None
+
+    assert api_handler.request_timeout is None
+
+
+@pytest.mark.parametrize(
+    "server_url, endpoint, expected",
+    [
+        (
+            "http://localhost:8000",
+            "/some/endpoint",
+            "http://localhost:8000/some/endpoint",
+        ),
+        (
+            "http://localhost:8000/",
+            "some/endpoint/",
+            "http://localhost:8000/some/endpoint",
+        ),
+        (
+            "https://localhost:8000",
+            "/some/endpoint",
+            "https://localhost:8000/some/endpoint",
+        ),
+        (
+            "https://localhost:8000/",
+            "some/endpoint/",
+            "https://localhost:8000/some/endpoint",
+        ),
+    ],
+)
+def test_format_endpoint(server_url, endpoint, expected):
+    assert _format_endpoint(server_url, endpoint) == expected

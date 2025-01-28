@@ -6,6 +6,7 @@ SPDX-License-Identifier: Apache-2.0
 from typing import Any, Type, TypeVar, Iterable
 import warnings
 import getpass
+import platform
 import datetime
 import hashlib
 import httpx
@@ -15,17 +16,7 @@ import re
 import yaml
 import multiprocessing
 from pathlib import Path, PurePosixPath
-from multiprocessing import Process
 
-try:
-    multiprocessing.set_start_method("spawn")
-except RuntimeError:
-    """
-    Since this is a side effect on module import, we can't guarantee that it will
-    always be called before the first Process is created, or that the start method
-    isn't already set. In this case, we just ignore the error - the processes should
-    still work fine.
-    """
 from .utils import ENDPOINTS, REGISTRIES
 
 S = TypeVar("S", bound="SessionID")
@@ -34,7 +25,7 @@ H = TypeVar("H", bound="ApiHandler")
 with open(Path(__file__).parent / "config.yaml", "r") as f:
     config = yaml.safe_load(f)
 
-SERVER_URL = "https://tracking-services-d6c2fd311c12.herokuapp.com"
+SERVER_URL = "https://reporting-dev.access-nri-store.cloud.edu.au"
 
 
 class ApiHandler:
@@ -44,6 +35,9 @@ class ApiHandler:
 
     Singleton so that we can add extra fields elsewhere in the code and have them
     persist across all telemetry calls.
+
+    To configure request timeouts and the multiprocessing context manually, configure
+    the _request_timeout and _mproc_override class attributes as desired.
     """
 
     _instance = None
@@ -53,6 +47,7 @@ class ApiHandler:
     _extra_fields: dict[str, dict[str, Any]] = {ep_name: {} for ep_name in ENDPOINTS}
     _pop_fields: dict[str, list[str]] = {}
     _request_timeout = None
+    _mproc_override = None
 
     def __new__(cls: Type[H]) -> H:
         if cls._instance is None:
@@ -174,7 +169,9 @@ class ApiHandler:
 
         endpoint = _format_endpoint(self.server_url, endpoint)
 
-        send_in_loop(endpoint, telemetry_data, self._request_timeout)
+        send_in_loop(
+            endpoint, telemetry_data, self._request_timeout, self._mproc_override
+        )
         return None
 
     def _create_telemetry_record(
@@ -282,7 +279,10 @@ async def send_telemetry(endpoint: str, data: dict[str, Any]) -> None:
 
 
 def send_in_loop(
-    endpoint: str, telemetry_data: dict[str, Any], timeout: float | None = None
+    endpoint: str,
+    telemetry_data: dict[str, Any],
+    timeout: float | None = None,
+    mproc_override: str | None = None,
 ) -> None:
     """
     Wraps the send_telemetry function in an event loop. This function will:
@@ -301,6 +301,10 @@ def send_in_loop(
         The maximum time to wait for the coroutine to finish. If the coroutine takes
         longer than this time, a TimeoutError will be raised. If None, the coroutine
         will terminate after 60 seconds.
+    mproc_override : str, optional
+        The multiprocessing context to use. If None, the context will be set to "fork"
+        on Linux systems and "spawn" on Windows/ MacOS systems. If a context is specified,
+        it will be used regardless of the system.
 
     Returns
     -------
@@ -312,7 +316,7 @@ def send_in_loop(
     try:
         loop = asyncio.get_running_loop()
     except RuntimeError:
-        _run_in_proc(endpoint, telemetry_data, timeout)
+        _run_in_proc(endpoint, telemetry_data, timeout, mproc_override)
     else:
         loop.create_task(send_telemetry(endpoint, telemetry_data))
         return None
@@ -342,7 +346,12 @@ def _run_event_loop(endpoint: str, telemetry_data: dict[str, Any]) -> None:
     loop.run_until_complete(send_telemetry(endpoint, telemetry_data))
 
 
-def _run_in_proc(endpoint: str, telemetry_data: dict[str, Any], timeout: float) -> None:
+def _run_in_proc(
+    endpoint: str,
+    telemetry_data: dict[str, Any],
+    timeout: float,
+    mproc_override: str | None,
+) -> None:
     """
     Handles the creation and running of a separate process for sending telemetry data.
     This function will:
@@ -359,13 +368,25 @@ def _run_in_proc(endpoint: str, telemetry_data: dict[str, Any], timeout: float) 
         The telemetry data to send.
     timeout : float
         The maximum time to wait for the process to finish.
+    mproc_override : str, optional
+        The multiprocessing context to use. If None, the context will be set to "fork"
+        on Linux systems and "spawn" on Windows systems. If a context is specified, it
+        will be used regardless of the system.
 
     Returns
     -------
     None
 
     """
-    proc = Process(target=_run_event_loop, args=(endpoint, telemetry_data))
+    if not mproc_override:
+        ctx_type = "fork" if platform.system().lower() == "linux" else "spawn"
+    else:
+        ctx_type = mproc_override
+
+    # Mypy gets upset below because it doesn't know we wont use "fork" on Windows
+    proc = multiprocessing.get_context(ctx_type).Process(  # type: ignore
+        target=_run_event_loop, args=(endpoint, telemetry_data)
+    )
     proc.start()
     proc.join(timeout)
     if proc.is_alive():

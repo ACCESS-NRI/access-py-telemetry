@@ -38,6 +38,7 @@ dev = [
     "mypy",  # linting
     "pytest",  # testing
     "ruff",  # linting
+    "pytest-httpserver", # #Endpoints for testing.
 ]
 
 [project.scripts]

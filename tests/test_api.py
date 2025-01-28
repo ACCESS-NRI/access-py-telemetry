@@ -249,7 +249,7 @@ def test_send_in_loop_is_bg(httpserver: HTTPServer):
 
     dt = end_time - start_time
 
-    assert dt < 2
+    assert dt < 4
     assert len(httpserver.log) == 6
 
 

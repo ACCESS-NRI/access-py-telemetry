@@ -12,7 +12,7 @@ from access_py_telemetry.api import (
 )
 from pydantic import ValidationError
 import pytest
-
+from pytest_httpserver import HTTPServer
 import time
 
 
@@ -217,7 +217,7 @@ def test_api_handler_send_api_request(api_handler, capsys):
     }
 
 
-def test_send_in_loop_is_bg():
+def test_send_in_loop_is_bg(httpserver: HTTPServer):
     """
     Send a request, but make sure that it runs in the background (ie. is non-blocking).
 
@@ -226,18 +226,26 @@ def test_send_in_loop_is_bg():
     and only sending 3 requests should be enough to ensure that we're not accidentally
     testing the process startup/teardown time.
     """
+    httpserver.expect_request("/loop-endpoint").respond_with_data("Request received")
     start_time = time.time()
 
+    assert len(httpserver.log) == 0
+
     for _ in range(3):
-        send_in_loop(endpoint="https://dud/endpoint", telemetry_data={}, timeout=3)
+        send_in_loop(
+            endpoint=httpserver.url_for("/loop-endpoint"), telemetry_data={}, timeout=3
+        )
 
     print("Requests sent")
+
+    time.sleep(2)
 
     end_time = time.time()
 
     dt = end_time - start_time
 
     assert dt < 4
+    assert len(httpserver.log) == 3
 
 
 def test_api_handler_invalid_endpoint(api_handler):

@@ -5,6 +5,7 @@ SPDX-License-Identifier: Apache-2.0
 
 from typing import Any
 import ast
+import re
 from IPython.core.getipython import get_ipython
 from IPython.core.interactiveshell import ExecutionInfo
 
@@ -16,6 +17,8 @@ from .utils import REGISTRIES
 api_handler = ApiHandler()
 
 registries = {registry: TelemetryRegister(registry) for registry in REGISTRIES.keys()}
+
+IPYTHON_MAGIC_PATTERN = r"^\s*[%!?]{1,2}"
 
 
 def capture_registered_calls(info: ExecutionInfo) -> None:
@@ -39,7 +42,7 @@ def capture_registered_calls(info: ExecutionInfo) -> None:
 
     # Remove lines that contain IPython magic commands
     code = "\n".join(
-        line for line in code.splitlines() if not line.strip().startswith("%")
+        line for line in code.splitlines() if not re.match(IPYTHON_MAGIC_PATTERN, line)
     )
 
     tree = ast.parse(code)

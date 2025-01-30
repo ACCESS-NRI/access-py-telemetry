@@ -25,7 +25,7 @@ def test_ipy_register_func(api_handler, reset_telemetry_register):
     register = TelemetryRegister("intake_catalog")
     api_handler = ApiHandler()
     blank_registries = {
-        key: {} for key in api_handler.registries if key != "intake_catalog"
+        key: {} for key in api_handler.endpoints if key != "intake_catalog"
     }
 
     assert api_handler.extra_fields == {
@@ -60,7 +60,7 @@ async def test_register_func(api_handler, reset_telemetry_register):
     api_handler = ApiHandler()
 
     blank_registries = {
-        key: {} for key in api_handler.registries if key != "intake_catalog"
+        key: {} for key in api_handler.endpoints if key != "intake_catalog"
     }
 
     assert api_handler.extra_fields == {

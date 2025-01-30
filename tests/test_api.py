@@ -84,7 +84,7 @@ def test_api_handler_extra_fields(local_host, api_handler):
 
     session1.add_extra_fields(XF_NAME, {"version": "1.0"})
 
-    blank_registries = {key: {} for key in session1.registries if key != XF_NAME}
+    blank_registries = {key: {} for key in session1.endpoints if key != XF_NAME}
 
     assert session2.extra_fields == {
         "intake_catalog": {"version": "1.0"},
@@ -307,22 +307,22 @@ def test_api_handler_set_timeout(api_handler):
         (
             "http://localhost:8000",
             "/some/endpoint",
-            "http://localhost:8000/some/endpoint",
+            "http://localhost:8000/some/endpoint/",
         ),
         (
             "http://localhost:8000/",
             "some/endpoint/",
-            "http://localhost:8000/some/endpoint",
+            "http://localhost:8000/some/endpoint/",
         ),
         (
             "https://localhost:8000",
             "/some/endpoint",
-            "https://localhost:8000/some/endpoint",
+            "https://localhost:8000/some/endpoint/",
         ),
         (
             "https://localhost:8000/",
             "some/endpoint/",
-            "https://localhost:8000/some/endpoint",
+            "https://localhost:8000/some/endpoint/",
         ),
     ],
 )

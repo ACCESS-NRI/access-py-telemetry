@@ -1,6 +1,7 @@
 # type: ignore
 from pytest import fixture
-from access_py_telemetry.api import ApiHandler, ENDPOINTS, SERVER_URL, REGISTRIES
+from access_py_telemetry.api import ApiHandler, SERVER_URL
+from access_py_telemetry.utils import ENDPOINTS
 from access_py_telemetry.registry import TelemetryRegister
 
 
@@ -15,7 +16,6 @@ def api_handler():
     ApiHandler._instance = None
     ApiHandler._server_url = SERVER_URL[:]
     ApiHandler.endpoints = {key: val for key, val in ENDPOINTS.items()}
-    ApiHandler.registries = {key for key in REGISTRIES}
     ApiHandler._extra_fields = {ep_name: {} for ep_name in ENDPOINTS.keys()}
     ApiHandler._pop_fields = {}
 

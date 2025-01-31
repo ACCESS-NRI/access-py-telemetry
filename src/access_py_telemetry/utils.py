@@ -51,4 +51,3 @@ REGISTRIES = {
     register.endpoint.replace("/", "_"): register.items
     for register in build_endpoints(config)
 }
-SERVER_URL = "https://tracking-services-d6c2fd311c12.herokuapp.com"

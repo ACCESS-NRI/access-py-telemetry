@@ -17,7 +17,7 @@ import yaml
 import multiprocessing
 from pathlib import Path, PurePosixPath
 
-from .utils import ENDPOINTS, REGISTRIES
+from .utils import ENDPOINTS
 
 S = TypeVar("S", bound="SessionID")
 H = TypeVar("H", bound="ApiHandler")
@@ -43,7 +43,6 @@ class ApiHandler:
     _instance = None
     _server_url = SERVER_URL[:]
     endpoints = {service: endpoint for service, endpoint in ENDPOINTS.items()}
-    registries = {service for service in REGISTRIES}
     _extra_fields: dict[str, dict[str, Any]] = {ep_name: {} for ep_name in ENDPOINTS}
     _pop_fields: dict[str, list[str]] = {}
     _request_timeout = None
@@ -405,4 +404,4 @@ def _format_endpoint(server_url: str, endpoint: str) -> str:
     slash between them.
     """
     endpoint = str(PurePosixPath(server_url) / endpoint.lstrip("/"))
-    return re.sub(r"^(https?:/)", r"\1/", endpoint)
+    return re.sub(r"^(https?:/)(.*?)(?<!/)\/?$", r"\1/\2/", endpoint)

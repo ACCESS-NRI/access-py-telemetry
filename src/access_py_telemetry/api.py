@@ -5,10 +5,8 @@ SPDX-License-Identifier: Apache-2.0
 
 from typing import Any, Type, TypeVar, Iterable
 import warnings
-import getpass
 import platform
-import datetime
-import hashlib
+import uuid
 import httpx
 import asyncio
 import pydantic
@@ -190,7 +188,7 @@ class ApiHandler:
         aren't. I've also modified __get__, so SessionID() evaluates to a string.
         """
         telemetry_data = {
-            "name": getpass.getuser(),
+            # "name": getpass.getuser(), # Until we work out the privacy policy nightmare
             "function": function_name,
             "args": args,
             "kwargs": kwargs,
@@ -211,8 +209,7 @@ class SessionID:
 
     This class ensures that only one instance of the session ID exists. The session
     ID is generated the first time it is accessed and is represented as a string.
-    The session ID is created using the current user's login name and the current
-    timestamp, hashed with SHA-256.
+    The session ID is created using using the UUID4 algorithm.
 
     Methods:
         __new__(cls, *args, **kwargs): Ensures only one instance of the class is created.
@@ -240,11 +237,10 @@ class SessionID:
 
     @staticmethod
     def create_session_id() -> str:
-        login = getpass.getuser()
-        timestamp = datetime.datetime.now().isoformat()
-        session_str = f"{login}_{timestamp}"
-        session_id = hashlib.sha256((session_str).encode()).hexdigest()
-        return session_id
+        """
+        Generate a unique session ID.
+        """
+        return str(uuid.uuid4())
 
 
 async def send_telemetry(endpoint: str, data: dict[str, Any]) -> None:

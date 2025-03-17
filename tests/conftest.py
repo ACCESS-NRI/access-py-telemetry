@@ -11,10 +11,10 @@ def api_handler():
     Get an instance of the APIHandler class, and then reset it after the test.
 
     """
-    yield ApiHandler("https://reporting-dev.access-nri-store.cloud.edu.au")
+    yield ApiHandler()
 
     ApiHandler._instance = None
-    ApiHandler._server_url = "https://reporting-dev.access-nri-store.cloud.edu.au"
+    ApiHandler._server_url = "https://reporting.access-nri-store.cloud.edu.au"
     ApiHandler.endpoints = {key: val for key, val in ENDPOINTS.items()}
     ApiHandler._extra_fields = {ep_name: {} for ep_name in ENDPOINTS.keys()}
     ApiHandler._pop_fields = {}

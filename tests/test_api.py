@@ -327,9 +327,10 @@ def test_api_handler_url_no_warnings(api_handler, recwarn):
     import access_py_telemetry.api
 
     access_py_telemetry.api.NRI_USER = False
-
     # Would trigger two warnings if NRI_USER was True
     api_handler.server_url = "http://localhost:8000"
+    # Clean this up
+    access_py_telemetry.api.NRI_USER = True
 
     assert len(recwarn) == 0
 

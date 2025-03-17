@@ -40,7 +40,7 @@ def test_session_id_properties():
 
     assert type(id1) is str
 
-    assert len(id1) == 64
+    assert len(id1) == 36
 
     assert id1 != SessionID.create_session_id()
 
@@ -196,7 +196,7 @@ def test_api_handler_send_api_request(api_handler, capsys):
     api_handler.add_extra_fields("payu", {"model": "ACCESS-OM2", "random_number": 2})
 
     # Remove indeterminate fields
-    api_handler.remove_fields("payu", ["session_id", "name"])
+    api_handler.remove_fields("payu", ["session_id"])
 
     # We should get a warning because we've used a dud url, but pytest doesn't
     # seem to capture subprocess warnings. I'm not sure there is really a good
@@ -205,13 +205,13 @@ def test_api_handler_send_api_request(api_handler, capsys):
         service_name="payu",
         function_name="_test",
         args=[1, 2, 3],
-        kwargs={"name": "test_username"},
+        kwargs={"random": "item"},
     )
 
     assert api_handler._last_record == {
         "function": "_test",
         "args": [1, 2, 3],
-        "kwargs": {"name": "test_username"},
+        "kwargs": {"random": "item"},
         "model": "ACCESS-OM2",
         "random_number": 2,
     }

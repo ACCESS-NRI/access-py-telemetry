@@ -23,7 +23,7 @@ H = TypeVar("H", bound="ApiHandler")
 with open(Path(__file__).parent / "config.yaml", "r") as f:
     config = yaml.safe_load(f)
 
-SERVER_URL = "https://reporting-dev.access-nri-store.cloud.edu.au"
+NRI_USER = True
 
 
 class ApiHandler:
@@ -39,24 +39,25 @@ class ApiHandler:
     """
 
     _instance = None
-    _server_url = SERVER_URL[:]
     endpoints = {service: endpoint for service, endpoint in ENDPOINTS.items()}
     _extra_fields: dict[str, dict[str, Any]] = {ep_name: {} for ep_name in ENDPOINTS}
     _pop_fields: dict[str, list[str]] = {}
     _request_timeout = None
     _mproc_override = None
 
-    def __new__(cls: Type[H]) -> H:
+    def __new__(cls: Type[H], *args: Any, **kwargs: Any) -> H:
         if cls._instance is None:
             cls._instance = super().__new__(cls)
         return cls._instance
 
     def __init__(
         self,
+        server_url: str = "https://reporting.access-nri-store.cloud.edu.au",
     ) -> None:
         if hasattr(self, "_initialized"):
             return None
         self._initialized = True
+        self._server_url = server_url
 
     @property
     def extra_fields(self) -> dict[str, Any]:
@@ -82,6 +83,21 @@ class ApiHandler:
         """
         Set the server URL for the telemetry API.
         """
+        if NRI_USER and (
+            "https://reporting-dev.access-nri-store.cloud.edu.au/" not in url
+            and "https://reporting.access-nri-store.cloud.edu.au/" not in url
+        ):
+            warnings.warn(
+                "Server URL not an ACCESS-NRI Reporting API URL",
+                stacklevel=2,
+                category=UserWarning,
+            )
+        if NRI_USER and not url.lower().endswith(("api", "api/")):
+            warnings.warn(
+                "Server URL does not end with 'api' or 'api/' - this is likely an error",
+                stacklevel=2,
+                category=UserWarning,
+            )
         self._server_url = url
         return None
 

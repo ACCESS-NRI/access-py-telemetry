@@ -3,7 +3,6 @@
 
 """Tests for `access_py_telemetry` package."""
 
-import access_py_telemetry.api
 from access_py_telemetry.api import (
     SessionID,
     ApiHandler,
@@ -23,7 +22,7 @@ def local_host():
 
 @pytest.fixture
 def default_url():
-    return access_py_telemetry.api.SERVER_URL
+    return "https://reporting.access-nri-store.cloud.edu.au"
 
 
 def test_session_id_properties():

@@ -19,6 +19,18 @@ intake:
     - open_esm_datastore
     - BaseBuilder.build
     - BaseBuilder.save
+    - AccessOm2Builder.build
+    - AccessOm2Builder.save
+    - AccessOm3Builder.build
+    - AccessOm3Builder.save
+    - AccessCm2Builder.build
+    - AccessCm2Builder.save
+    - Mom6Builder.build
+    - Mom6Builder.save
+    - AccessEsm15Builder.build
+    - AccessEsm15Builder.save
+    - AccessCm2Builder.build
+    - AccessCm2Builder.save
   cli:
     - metadata_validate
     - metadata_template

@@ -3,8 +3,21 @@ intake:
     - esm_datastore.search
     - DfFileCatalog.search
     - DfFileCatalog.__getitem__
-payu: 
-  run: 
-    - Experiment.run
-  restart:
-    - Experiment.restart
+    - esm_datastore.to_dataset_dict
+    - esm_datastore.to_dask
+    - esm_datastore.df
+    - DfFileCatalog.df
+    - esm_datastore.unique
+    - DfFileCatalog.unique
+    - DfFileCatalog.keys
+    - DfFileCatalog.to_source_dict
+    - DfFileCatalog.to_source
+  datastore:
+    - use_datastore
+    - intake.open_esm_datastore
+    - BaseBuilder.build
+    - BaseBuilder.save
+  cli:
+    - metadata_validate
+    - metadata_template
+    - use_esm_datatore

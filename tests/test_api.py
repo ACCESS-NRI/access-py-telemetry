@@ -300,6 +300,40 @@ def test_api_handler_set_timeout(api_handler):
     assert api_handler.request_timeout is None
 
 
+def test_api_handler_url_warnings(api_handler):
+    """
+    Make sure that we get a warning if we try to set the server_url to a non-reporting
+    url.
+    """
+
+    with pytest.warns(
+        UserWarning, match="Server URL not an ACCESS-NRI Reporting API URL"
+    ):
+        api_handler.server_url = "http://localhost:8000"
+
+    with pytest.warns(
+        UserWarning, match="Server URL does not end with 'api' or 'api/'"
+    ):
+        api_handler.server_url = "https://localhost:8000"
+
+
+def test_api_handler_url_no_warnings(api_handler, recwarn):
+    """
+    If we set NRI_USER to False, we shouldn't get any warnings - other orgs/users
+    can do what they like.
+    """
+    assert len(recwarn) == 0
+
+    import access_py_telemetry.api
+
+    access_py_telemetry.api.NRI_USER = False
+
+    # Would trigger two warnings if NRI_USER was True
+    api_handler.server_url = "http://localhost:8000"
+
+    assert len(recwarn) == 0
+
+
 @pytest.mark.parametrize(
     "server_url, endpoint, expected",
     [

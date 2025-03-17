@@ -90,13 +90,13 @@ class ApiHandler:
             warnings.warn(
                 "Server URL not an ACCESS-NRI Reporting API URL",
                 stacklevel=2,
-                category=RuntimeWarning,
+                category=UserWarning,
             )
         if NRI_USER and not url.lower().endswith(("api", "api/")):
             warnings.warn(
                 "Server URL does not end with 'api' or 'api/' - this is likely an error",
                 stacklevel=2,
-                category=RuntimeWarning,
+                category=UserWarning,
             )
         self._server_url = url
         return None

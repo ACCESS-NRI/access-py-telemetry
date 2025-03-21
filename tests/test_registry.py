@@ -19,7 +19,7 @@ def test_telemetry_register_unique(reset_telemetry_register):
 
     # assert session1 is session2
 
-    assert set(session1) == {
+    assert set(session1) >= {
         "esm_datastore.search",
         "DfFileCatalog.search",
         "DfFileCatalog.__getitem__",
@@ -27,7 +27,7 @@ def test_telemetry_register_unique(reset_telemetry_register):
 
     session1.register("test_function")
 
-    assert set(session2) == {
+    assert set(session2) >= {
         "esm_datastore.search",
         "DfFileCatalog.search",
         "DfFileCatalog.__getitem__",
@@ -38,15 +38,21 @@ def test_telemetry_register_unique(reset_telemetry_register):
 
     session3 = TelemetryRegister("intake_catalog")
 
-    assert set(session3) == {
+    assert set(session3) >= {
         "esm_datastore.search",
         "DfFileCatalog.search",
     }
 
-    assert set(session2) == {
+    assert "test_function" not in session3
+    assert "DfFileCatalog.__getitem__" not in session3
+
+    assert set(session2) >= {
         "esm_datastore.search",
         "DfFileCatalog.search",
     }
+
+    assert "test_function" not in session2
+    assert "DfFileCatalog.__getitem__" not in session2
 
 
 def test_telemetry_register_validation(reset_telemetry_register):

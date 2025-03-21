@@ -3,8 +3,39 @@ intake:
     - esm_datastore.search
     - DfFileCatalog.search
     - DfFileCatalog.__getitem__
-payu: 
-  run: 
-    - Experiment.run
-  restart:
-    - Experiment.restart
+    - esm_datastore.to_dataset_dict
+    - esm_datastore.to_dask
+    - esm_datastore.df
+    - DfFileCatalog.df
+    - esm_datastore.unique
+    - esm_datastore.nunique
+    - DfFileCatalog.unique
+    - DfFileCatalog.nunique
+    - DfFileCatalog.keys
+    - DfFileCatalog.to_source_dict
+    - DfFileCatalog.to_source
+    - open_catalog
+    - Catalog.__init__
+  datastore:
+    - use_datastore
+    - open_esm_datastore
+    - BaseBuilder.build
+    - BaseBuilder.save
+    - AccessOm2Builder.build
+    - AccessOm2Builder.save
+    - AccessOm3Builder.build
+    - AccessOm3Builder.save
+    - AccessCm2Builder.build
+    - AccessCm2Builder.save
+    - Mom6Builder.build
+    - Mom6Builder.save
+    - AccessEsm15Builder.build
+    - AccessEsm15Builder.save
+    - AccessCm2Builder.build
+    - AccessCm2Builder.save
+    - ROMSBuilder.build
+    - ROMSBuilder.save
+  cli:
+    - metadata_validate
+    - metadata_template
+    - use_esm_datatore

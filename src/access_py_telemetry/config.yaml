@@ -8,7 +8,9 @@ intake:
     - esm_datastore.df
     - DfFileCatalog.df
     - esm_datastore.unique
+    - esm_datastore.nunique
     - DfFileCatalog.unique
+    - DfFileCatalog.nunique
     - DfFileCatalog.keys
     - DfFileCatalog.to_source_dict
     - DfFileCatalog.to_source
@@ -31,6 +33,8 @@ intake:
     - AccessEsm15Builder.save
     - AccessCm2Builder.build
     - AccessCm2Builder.save
+    - ROMSBuilder.build
+    - ROMSBuilder.save
   cli:
     - metadata_validate
     - metadata_template

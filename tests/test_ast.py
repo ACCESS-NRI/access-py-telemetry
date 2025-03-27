@@ -271,6 +271,10 @@ class MyClass:
 instance = MyClass()
 mycall = instance['some_item']
 
+l = [1, 2, 3]
+
+l[0]
+
 """
 
     class MyClass:
@@ -283,9 +287,10 @@ mycall = instance['some_item']
     mock_user_ns = {
         "MyClass": MyClass,
         "instance": MyClass(),
+        "l": [1, 2, 3],
     }
 
-    mock_registry = {"mock": ["MyClass.__getitem__"]}
+    mock_registry = {"mock": ["MyClass.__getitem__", "list.__getitem__"]}
 
     mock_api_handler = MagicMock()
 
@@ -297,6 +302,7 @@ mycall = instance['some_item']
 
     assert visitor._caught_calls == {
         "MyClass.__getitem__",
+        "list.__getitem__",
     }
 
 

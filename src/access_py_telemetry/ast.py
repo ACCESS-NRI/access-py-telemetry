@@ -119,8 +119,6 @@ class CallListener(ast.NodeVisitor):
                         func_name = f"{instance.__name__}.{'.'.join(parts[1:])}"
                 else:
                     print(f"Unknown call: {full_name}")
-        else:
-            print("Unable to determine call type.")
 
         args = [self.safe_eval(arg) for arg in node.args]
         kwargs = {
@@ -158,8 +156,6 @@ class CallListener(ast.NodeVisitor):
                     func_name = f"{full_name}.__getitem__"
             else:
                 print(f"{full_name}.__getitem__")
-        else:
-            print("Unable to determine subscript operation.")
 
         args = ast.unparse(node.slice)
 

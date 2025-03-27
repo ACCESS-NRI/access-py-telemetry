@@ -14,8 +14,9 @@ intake:
     - DfFileCatalog.keys
     - DfFileCatalog.to_source_dict
     - DfFileCatalog.to_source
-    - open_catalog
-    - Catalog.__init__
+    - intake.cat.access_nri
+    # - open_catalog
+    # - Catalog.__init__
   datastore:
     - use_datastore
     - open_esm_datastore

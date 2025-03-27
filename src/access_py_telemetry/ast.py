@@ -48,65 +48,130 @@ def capture_registered_calls(info: ExecutionInfo) -> None:
     tree = ast.parse(code)
     user_namespace: dict[str, Any] = get_ipython().user_ns  # type: ignore
 
-    # Temporary mapping for instances created in the same cell
-    temp_variable_types = {}
+    visitor = CallListener(user_namespace, REGISTRIES, api_handler)
+    visitor.visit(tree)
 
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Assign):  # Variable assignment
-            for target in node.targets:
-                if isinstance(target, ast.Name):
-                    var_name = target.id
-                    if isinstance(node.value, ast.Call):
-                        if isinstance(node.value.func, ast.Name):
-                            class_name = node.value.func.id
-                            temp_variable_types[var_name] = class_name
+    return None
 
-    for node in ast.walk(tree):
-        func_name = ""
-        if isinstance(node, ast.Call):  # Calling a function or method
-            if isinstance(node.func, ast.Name):  # It's a function call
-                func_name = node.func.id
 
-            elif isinstance(node.func, ast.Attribute) and isinstance(
-                node.func.value, ast.Name
-            ):  # It's a method call
-                instance_name = node.func.value.id
-                method_name = node.func.attr
+class CallListener(ast.NodeVisitor):
+    def __init__(
+        self,
+        user_namespace: dict[str, Any],
+        registries: dict[str, set[str]],
+        api_handler: ApiHandler,
+    ):
+        self.user_namespace = user_namespace
+        self.registries = registries
+        self._caught_calls: set[str] = set()  # Mostly for debugging
+        self.api_handler = api_handler
 
-                instance = user_namespace.get(instance_name)
-                if instance is not None:
-                    class_name = instance.__class__.__name__
+    def _get_full_name(self, node: ast.AST) -> str | None:
+        """Recursively get the full name of a function or method call."""
+        if isinstance(node, ast.Attribute):
+            return f"{self._get_full_name(node.value)}.{node.attr}"
+        elif isinstance(node, ast.Name):
+            return node.id
+        elif isinstance(node, ast.Subscript):
+            # Handle subscript (e.g., mylist[0] -> mylist.__getitem__)
+            value = self._get_full_name(node.value)
+            if value:
+                return f"{value}.__getitem__"
+        return None
+
+    def safe_eval(self, node: ast.AST) -> Any:
+        """Try to evaluate a node, or return the unparsed node if that fails."""
+        try:
+            return ast.literal_eval(node)
+        except (ValueError, SyntaxError):
+            return ast.unparse(node)
+
+    def visit_Attribute(self, node: ast.Attribute) -> None:
+        full_name = self._get_full_name(node)
+        for registry, registered_funcs in self.registries.items():
+            if full_name in registered_funcs:
+                self.api_handler.send_api_request(
+                    registry,
+                    full_name,
+                    [],
+                    {},
+                )
+                self._caught_calls |= {full_name}
+
+        self.generic_visit(node)
+
+    def visit_Call(self, node: ast.Call) -> None:
+        full_name = self._get_full_name(node.func)
+        func_name = None
+        if full_name:
+            parts = full_name.split(".")
+            if len(parts) == 1:
+                # Regular function call
+                func_name = f"{full_name}"
+            else:
+                # Check if the first part is in the user namespace
+                instance = self.user_namespace.get(parts[0])
+                if instance:
+                    class_name = type(instance).__name__
+                    if class_name != "module":
+                        func_name = f"{class_name}.{'.'.join(parts[1:])}"
+                    else:
+                        func_name = f"{instance.__name__}.{'.'.join(parts[1:])}"
                 else:
-                    class_name = temp_variable_types.get(instance_name, "Unknown")
+                    print(f"Unknown call: {full_name}")
+        else:
+            print("Unable to determine call type.")
 
-                func_name = f"{class_name}.{method_name}"
+        args = [self.safe_eval(arg) for arg in node.args]
+        kwargs = {
+            kw.arg: self.safe_eval(kw.value)
+            for kw in node.keywords
+            if kw.arg is not None
+        }
 
-            for registry, registered_funcs in registries.items():
+        if func_name:
+            for registry, registered_funcs in self.registries.items():
                 if func_name in registered_funcs:
-                    args = [ast.dump(arg) for arg in node.args]
-                    kwargs = {
-                        kw.arg: ast.literal_eval(kw.value)
-                        for kw in node.keywords
-                        if kw.arg is not None  # Redundant check to make mypy happy
-                    }
-                    api_handler.send_api_request(
+                    self.api_handler.send_api_request(
                         registry,
                         func_name,
                         args,
                         kwargs,
                     )
-        elif isinstance(node, ast.Subscript) and isinstance(node.value, ast.Name):
-            instance_name = node.value.id
-            # Evaluate the instance to get its class name
-            instance = user_namespace.get(instance_name)
-            if instance is not None:
-                class_name = instance.__class__.__name__
-                index = ast.literal_eval(node.slice)
-                func_name = f"{class_name}.__getitem__"
+                    self._caught_calls |= {func_name}
 
-            for registry, registered_funcs in registries.items():
-                if func_name in registry:
-                    api_handler.send_api_request(
-                        registry, func_name, args=[index], kwargs={}
+        self.generic_visit(node)
+
+    def visit_Subscript(self, node: ast.Subscript) -> None:
+        """Handle subscript operations."""
+        full_name = self._get_full_name(node.value)  # Get the object being indexed
+        func_name = None
+        if full_name:
+            parts = full_name.split(".")
+            if len(parts) > 0:
+                # Check if the first part is in the user namespace
+                instance = self.user_namespace.get(parts[0])
+                if instance:
+                    registry = type(instance).__name__
+                    func_name = f"{registry}.{'.'.join(parts[1:])}__getitem__"
+                else:
+                    func_name = f"{full_name}.__getitem__"
+            else:
+                print(f"{full_name}.__getitem__")
+        else:
+            print("Unable to determine subscript operation.")
+
+        args = ast.unparse(node.slice)
+
+        if func_name:
+            for registry, registered_funcs in self.registries.items():
+                if func_name in registered_funcs:
+                    self.api_handler.send_api_request(
+                        registry,
+                        func_name,
+                        [args],
+                        {},
                     )
-    return None
+                    self._caught_calls |= {func_name}
+
+        self.generic_visit(node)

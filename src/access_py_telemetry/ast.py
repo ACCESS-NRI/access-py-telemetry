@@ -146,16 +146,12 @@ class CallListener(ast.NodeVisitor):
         func_name = None
         if full_name:
             parts = full_name.split(".")
-            if len(parts) > 0:
-                # Check if the first part is in the user namespace
-                instance = self.user_namespace.get(parts[0])
-                if instance:
-                    registry = type(instance).__name__
-                    func_name = f"{registry}.{'.'.join(parts[1:])}__getitem__"
-                else:
-                    func_name = f"{full_name}.__getitem__"
+            instance = self.user_namespace.get(parts[0])
+            if instance:
+                registry = type(instance).__name__
+                func_name = f"{registry}.{'.'.join(parts[1:])}__getitem__"
             else:
-                print(f"{full_name}.__getitem__")
+                func_name = f"{full_name}.__getitem__"
 
         args = ast.unparse(node.slice)
 

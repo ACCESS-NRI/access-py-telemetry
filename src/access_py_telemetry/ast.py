@@ -106,12 +106,14 @@ class CallListener(ast.NodeVisitor):
             else:
                 # Check if the first part is in the user namespace
                 instance = self.user_namespace.get(parts[0])
-                if instance:
-                    class_name = type(instance).__name__
-                    if class_name != "module":
-                        func_name = f"{class_name}.{'.'.join(parts[1:])}"
-                    else:
-                        func_name = f"{instance.__name__}.{'.'.join(parts[1:])}"
+                if not instance:
+                    return None
+
+                class_name = type(instance).__name__
+                if class_name != "module":
+                    func_name = f"{class_name}.{'.'.join(parts[1:])}"
+                else:
+                    func_name = f"{instance.__name__}.{'.'.join(parts[1:])}"
 
         args = [self.safe_eval(arg) for arg in node.args]
         kwargs = {
@@ -140,11 +142,11 @@ class CallListener(ast.NodeVisitor):
         if full_name:
             parts = full_name.split(".")
             instance = self.user_namespace.get(parts[0])
-            if instance:
-                class_name = type(instance).__name__
-                func_name = f"{class_name}.{'.'.join(parts[1:])}__getitem__"
-            else:
-                func_name = f"{full_name}.__getitem__"
+            if not instance:
+                return None
+
+            class_name = type(instance).__name__
+            func_name = f"{class_name}.{'.'.join(parts[1:])}__getitem__"
 
         args = ast.unparse(node.slice)
 

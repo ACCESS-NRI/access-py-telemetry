@@ -107,6 +107,7 @@ class CallListener(ast.NodeVisitor):
                 # Check if the first part is in the user namespace
                 instance = self.user_namespace.get(parts[0])
                 if not instance:
+                    self.generic_visit(node)
                     return None
 
                 class_name = type(instance).__name__

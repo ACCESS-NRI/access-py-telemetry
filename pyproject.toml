@@ -39,6 +39,8 @@ dev = [
     "pytest",  # testing
     "ruff",  # linting
     "pytest-httpserver", # #Endpoints for testing.
+    "intake",
+    "access-nri-intake",
 ]
 
 [project.scripts]

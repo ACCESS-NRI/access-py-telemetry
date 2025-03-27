@@ -144,7 +144,7 @@ class ApiHandler:
         service_name: str,
         function_name: str,
         args: list[Any] | tuple[Any, ...],
-        kwargs: dict[str, Any | None],
+        kwargs: dict[str, str | Any],
     ) -> None:
         """
         Send an API request with telemetry data.

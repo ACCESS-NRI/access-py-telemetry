@@ -72,11 +72,6 @@ class CallListener(ast.NodeVisitor):
             return f"{self._get_full_name(node.value)}.{node.attr}"
         elif isinstance(node, ast.Name):
             return node.id
-        elif isinstance(node, ast.Subscript):
-            # Handle subscript (e.g., mylist[0] -> mylist.__getitem__)
-            value = self._get_full_name(node.value)
-            if value:
-                return f"{value}.__getitem__"
         return None
 
     def safe_eval(self, node: ast.AST) -> Any:
@@ -117,8 +112,6 @@ class CallListener(ast.NodeVisitor):
                         func_name = f"{class_name}.{'.'.join(parts[1:])}"
                     else:
                         func_name = f"{instance.__name__}.{'.'.join(parts[1:])}"
-                else:
-                    print(f"Unknown call: {full_name}")
 
         args = [self.safe_eval(arg) for arg in node.args]
         kwargs = {
@@ -148,8 +141,8 @@ class CallListener(ast.NodeVisitor):
             parts = full_name.split(".")
             instance = self.user_namespace.get(parts[0])
             if instance:
-                registry = type(instance).__name__
-                func_name = f"{registry}.{'.'.join(parts[1:])}__getitem__"
+                class_name = type(instance).__name__
+                func_name = f"{class_name}.{'.'.join(parts[1:])}__getitem__"
             else:
                 func_name = f"{full_name}.__getitem__"
 

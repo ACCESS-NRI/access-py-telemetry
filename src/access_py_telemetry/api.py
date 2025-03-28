@@ -95,7 +95,7 @@ class ApiHandler:
         return None
 
     @pydantic.validate_call
-    def clear_headers(self, service_names: str | Iterable[str] | None) -> None:
+    def clear_headers(self, service_names: str | Iterable[str] | None = None) -> None:
         """
         Clear the headers for a given service or services, if specified.
 

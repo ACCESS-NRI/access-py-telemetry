@@ -362,3 +362,38 @@ def test_api_handler_url_no_warnings(api_handler, recwarn):
 )
 def test_format_endpoint(server_url, endpoint, expected):
     assert _format_endpoint(server_url, endpoint) == expected
+
+
+def test_api_handler_add_generic_token(api_handler):
+    """
+    Add a token to the APIHandler class, without specifying a service, and make
+    sure it's applied to each service.
+    """
+    api_handler.set_headers(None, {"generic_token": "password123"})
+
+    assert api_handler.headers == {
+        endpoint: {"generic_token": "password123"} for endpoint in api_handler.endpoints
+    }
+
+    api_handler.clear_headers(None)
+
+    assert api_handler.headers == {endpoint: {} for endpoint in api_handler.endpoints}
+
+
+def test_api_handler_add_single_service_token(api_handler):
+    """
+    Add a token to the APIHandler class, specifying a service, and make sure it's
+    only applied to that service.
+    """
+    endpoints = [k for k in api_handler.endpoints.keys()]
+    specified_service, *unspecified_services = endpoints
+    api_handler.set_headers(specified_service, {"catalog_token": "password123"})
+
+    assert api_handler.headers == {
+        specified_service: {"catalog_token": "password123"},
+        **{service: {} for service in unspecified_services},
+    }
+
+    api_handler.clear_headers("intake_catalog")
+
+    assert api_handler.headers == {endpoint: {} for endpoint in api_handler.endpoints}

@@ -4,6 +4,7 @@
 """Tests for the AST module"""
 
 import ast
+import sys
 import pytest
 from access_py_telemetry.ast import CallListener
 from unittest.mock import MagicMock
@@ -40,16 +41,9 @@ mycall = instance.func()
 instance.uncaught_func()
 """
 
-    class MyClass:
-        def func(self):
-            self.set_var = set()
-
-        def uncaught_func(self, *args, **kwargs):
-            pass
-
-    mock_user_ns = {
-        "instance": MyClass(),
-    }
+    f = sys._getframe()
+    exec(mock_info.raw_cell, globals(), f.f_locals)
+    mock_user_ns = f.f_locals
 
     mock_registry = {"mock": ["MyClass.func"]}
 
@@ -82,16 +76,9 @@ unregistered_func()
 
 """
 
-    def registered_func():
-        return None
-
-    def unregistered_func():
-        return None
-
-    mock_user_ns = {
-        "registered_func": registered_func,
-        "unregistered_func": unregistered_func,
-    }
+    f = sys._getframe()
+    exec(mock_info.raw_cell, globals(), f.f_locals)
+    mock_user_ns = f.f_locals
 
     mock_registry = {"mock": ["registered_func"]}
 
@@ -105,6 +92,51 @@ unregistered_func()
 
     assert visitor._caught_calls == {
         "registered_func",
+    }
+
+    assert "uncaught_func" not in visitor._caught_calls
+
+
+def test_ast_unparse_bare_function():
+    mock_info = MockInfo()
+    mock_info.raw_cell = """
+
+import pandas as pd
+
+def registered_func():
+    return None
+
+def registered_func2(x):
+    return None
+
+
+def unregistered_func():
+    return None
+
+registered_func()
+unregistered_func()
+
+registered_func2(pd.DataFrame())
+
+"""
+
+    f = sys._getframe()
+    exec(mock_info.raw_cell, globals(), f.f_locals)
+    mock_user_ns = f.f_locals
+
+    mock_registry = {"mock": ["registered_func", "registered_func2"]}
+
+    mock_api_handler = MagicMock()
+
+    tree = ast.parse(mock_info.raw_cell)
+
+    visitor = CallListener(mock_user_ns, mock_registry, mock_api_handler)
+
+    visitor.visit(tree)
+
+    assert visitor._caught_calls == {
+        "registered_func",
+        "registered_func2",
     }
 
     assert "uncaught_func" not in visitor._caught_calls
@@ -133,17 +165,9 @@ unregistered_func()
 
 """
 
-    def registered_func():
-        return None
-
-    def unregistered_func():
-        return None
-
-    mock_user_ns = {
-        "registered_func": registered_func,
-        "unregistered_func": unregistered_func,
-        "reg_func": registered_func,
-    }
+    f = sys._getframe()
+    exec(mock_info.raw_cell, globals(), f.f_locals)
+    mock_user_ns = f.f_locals
 
     mock_registry = {"mock": ["registered_func"]}
 
@@ -179,14 +203,9 @@ MyClass().func()
 
 """
 
-    class MyClass:
-        def func(self):
-            self.set_var = set()
-
-    mock_user_ns = {
-        "MyClass": MyClass,
-        "instance": MyClass(),
-    }
+    f = sys._getframe()
+    exec(mock_info.raw_cell, globals(), f.f_locals)
+    mock_user_ns = f.f_locals
 
     mock_registry = {"mock": ["MyClass.func"]}
 
@@ -223,25 +242,9 @@ MyClass.func(instance)
 
 """
 
-    class MyClass:
-        def func(self):
-            self.set_var = set()
-
-    class SecondClass:
-        def other_func(self):
-            self.other_var = 1
-
-    class ClassFunc:
-        @classmethod
-        def class_func(cls):
-            cls.class_var = 1
-
-    def my_bare_func():
-        return None
-
-    mock_user_ns = {
-        "MyClass": MyClass,
-    }
+    f = sys._getframe()
+    exec(mock_info.raw_cell, globals(), f.f_locals)
+    mock_user_ns = f.f_locals
 
     mock_registry = {"mock": ["MyClass.class_func"]}
 
@@ -277,18 +280,9 @@ l[0]
 
 """
 
-    class MyClass:
-        def func(self):
-            self.set_var = set()
-
-        def __getitem__(self, key):
-            return [1, 2, 3]
-
-    mock_user_ns = {
-        "MyClass": MyClass,
-        "instance": MyClass(),
-        "l": [1, 2, 3],
-    }
+    f = sys._getframe()
+    exec(mock_info.raw_cell, globals(), f.f_locals)
+    mock_user_ns = f.f_locals
 
     mock_registry = {"mock": ["MyClass.__getitem__", "list.__getitem__"]}
 
@@ -315,11 +309,9 @@ os.path.join("some","paths")
 
 """
 
-    import os
-
-    mock_user_ns = {
-        "os": os,
-    }
+    f = sys._getframe()
+    exec(mock_info.raw_cell, globals(), f.f_locals)
+    mock_user_ns = f.f_locals
 
     mock_registry = {"mock": ["os.path.join"]}
 
@@ -345,11 +337,9 @@ operating_system.path.join("some","paths")
 
 """
 
-    import os as operating_system
-
-    mock_user_ns = {
-        "operating_system": operating_system,
-    }
+    f = sys._getframe()
+    exec(mock_info.raw_cell, globals(), f.f_locals)
+    mock_user_ns = f.f_locals
 
     mock_registry = {"mock": ["os.path.join"]}
 
@@ -374,12 +364,36 @@ intake.cat.access_nri
 
 """
 
-    import intake
+    f = sys._getframe()
+    exec(mock_info.raw_cell, globals(), f.f_locals)
+    mock_user_ns = f.f_locals
 
-    mock_user_ns = {
-        "intake": intake,
-        "intake.cat.access_nri": intake.cat.access_nri,
+    mock_registry = {"mock": ["intake.cat.access_nri"]}
+
+    mock_api_handler = MagicMock()
+
+    tree = ast.parse(mock_info.raw_cell)
+
+    visitor = CallListener(mock_user_ns, mock_registry, mock_api_handler)
+
+    visitor.visit(tree)
+
+    assert visitor._caught_calls == {
+        "intake.cat.access_nri",
     }
+
+
+def test_import_assign_catalog():
+    mock_info = MockInfo()
+    mock_info.raw_cell = """
+import intake
+cat = intake.cat.access_nri
+
+"""
+
+    f = sys._getframe()
+    exec(mock_info.raw_cell, globals(), f.f_locals)
+    mock_user_ns = f.f_locals
 
     mock_registry = {"mock": ["intake.cat.access_nri"]}
 
@@ -409,12 +423,9 @@ import intake
 intake.cat.access_nri
 """
 
-    import intake
-
-    mock_user_ns = {
-        "intake": intake,
-        "intake.cat.access_nri": intake.cat.access_nri,
-    }
+    f = sys._getframe()
+    exec(mock_info.raw_cell, globals(), f.f_locals)
+    mock_user_ns = f.f_locals
 
     mock_registry = {"mock": ["intake.catalog.Catalog.__init__"]}
 

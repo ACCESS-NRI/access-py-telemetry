@@ -39,6 +39,7 @@ mycall = instance.func()
 
 instance.uncaught_func()
 """
+
     exec(mock_info.raw_cell)
     mock_user_ns = locals()
 

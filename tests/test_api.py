@@ -397,3 +397,18 @@ def test_api_handler_add_single_service_token(api_handler):
     api_handler.clear_headers("intake_catalog")
 
     assert api_handler.headers == {endpoint: {} for endpoint in api_handler.endpoints}
+
+
+def test_api_handler_sends_correct_headers(api_handler, httpserver):
+    api_handler.server_url = httpserver.url_for("/")
+    api_handler.endpoints = {"endpoint": "endpoint"}
+    api_handler.set_headers(None, {"generic_token": "password123"})
+    httpserver.expect_request(
+        "/endpoint", headers={"generic_token": "password123"}
+    ).respond_with_data("Request received")
+    api_handler.send_api_request(
+        service_name="endpoint",
+        function_name="test",
+        args=[1, 2, 3],
+        kwargs={"random": "item"},
+    )

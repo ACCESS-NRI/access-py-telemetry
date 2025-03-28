@@ -39,17 +39,8 @@ mycall = instance.func()
 
 instance.uncaught_func()
 """
-
-    class MyClass:
-        def func(self):
-            self.set_var = set()
-
-        def uncaught_func(self, *args, **kwargs):
-            pass
-
-    mock_user_ns = {
-        "instance": MyClass(),
-    }
+    exec(mock_info.raw_cell)
+    mock_user_ns = locals()
 
     mock_registry = {"mock": ["MyClass.func"]}
 
@@ -82,16 +73,8 @@ unregistered_func()
 
 """
 
-    def registered_func():
-        return None
-
-    def unregistered_func():
-        return None
-
-    mock_user_ns = {
-        "registered_func": registered_func,
-        "unregistered_func": unregistered_func,
-    }
+    exec(mock_info.raw_cell)
+    mock_user_ns = locals()
 
     mock_registry = {"mock": ["registered_func"]}
 
@@ -133,17 +116,8 @@ unregistered_func()
 
 """
 
-    def registered_func():
-        return None
-
-    def unregistered_func():
-        return None
-
-    mock_user_ns = {
-        "registered_func": registered_func,
-        "unregistered_func": unregistered_func,
-        "reg_func": registered_func,
-    }
+    exec(mock_info.raw_cell)
+    mock_user_ns = locals()
 
     mock_registry = {"mock": ["registered_func"]}
 
@@ -179,14 +153,8 @@ MyClass().func()
 
 """
 
-    class MyClass:
-        def func(self):
-            self.set_var = set()
-
-    mock_user_ns = {
-        "MyClass": MyClass,
-        "instance": MyClass(),
-    }
+    exec(mock_info.raw_cell)
+    mock_user_ns = locals()
 
     mock_registry = {"mock": ["MyClass.func"]}
 
@@ -223,25 +191,8 @@ MyClass.func(instance)
 
 """
 
-    class MyClass:
-        def func(self):
-            self.set_var = set()
-
-    class SecondClass:
-        def other_func(self):
-            self.other_var = 1
-
-    class ClassFunc:
-        @classmethod
-        def class_func(cls):
-            cls.class_var = 1
-
-    def my_bare_func():
-        return None
-
-    mock_user_ns = {
-        "MyClass": MyClass,
-    }
+    exec(mock_info.raw_cell)
+    mock_user_ns = locals()
 
     mock_registry = {"mock": ["MyClass.class_func"]}
 
@@ -277,18 +228,8 @@ l[0]
 
 """
 
-    class MyClass:
-        def func(self):
-            self.set_var = set()
-
-        def __getitem__(self, key):
-            return [1, 2, 3]
-
-    mock_user_ns = {
-        "MyClass": MyClass,
-        "instance": MyClass(),
-        "l": [1, 2, 3],
-    }
+    exec(mock_info.raw_cell)
+    mock_user_ns = locals()
 
     mock_registry = {"mock": ["MyClass.__getitem__", "list.__getitem__"]}
 
@@ -315,11 +256,8 @@ os.path.join("some","paths")
 
 """
 
-    import os
-
-    mock_user_ns = {
-        "os": os,
-    }
+    exec(mock_info.raw_cell)
+    mock_user_ns = locals()
 
     mock_registry = {"mock": ["os.path.join"]}
 
@@ -345,11 +283,8 @@ operating_system.path.join("some","paths")
 
 """
 
-    import os as operating_system
-
-    mock_user_ns = {
-        "operating_system": operating_system,
-    }
+    exec(mock_info.raw_cell)
+    mock_user_ns = locals()
 
     mock_registry = {"mock": ["os.path.join"]}
 
@@ -374,12 +309,34 @@ intake.cat.access_nri
 
 """
 
-    import intake
+    exec(mock_info.raw_cell)
+    mock_user_ns = locals()
 
-    mock_user_ns = {
-        "intake": intake,
-        "intake.cat.access_nri": intake.cat.access_nri,
+    mock_registry = {"mock": ["intake.cat.access_nri"]}
+
+    mock_api_handler = MagicMock()
+
+    tree = ast.parse(mock_info.raw_cell)
+
+    visitor = CallListener(mock_user_ns, mock_registry, mock_api_handler)
+
+    visitor.visit(tree)
+
+    assert visitor._caught_calls == {
+        "intake.cat.access_nri",
     }
+
+
+def test_import_assign_catalog():
+    mock_info = MockInfo()
+    mock_info.raw_cell = """
+import intake
+cat = intake.cat.access_nri
+
+"""
+
+    exec(mock_info.raw_cell)
+    mock_user_ns = locals()
 
     mock_registry = {"mock": ["intake.cat.access_nri"]}
 

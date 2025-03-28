@@ -87,9 +87,9 @@ class CallListener(ast.NodeVisitor):
             if full_name in registered_funcs:
                 self.api_handler.send_api_request(
                     registry,
-                    full_name,
-                    [],
-                    {},
+                    function_name=full_name,
+                    args=[],
+                    kwargs={},
                 )
                 self._caught_calls |= {full_name}
 

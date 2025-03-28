@@ -8,6 +8,7 @@ from access_py_telemetry.api import (
     ApiHandler,
     send_in_loop,
     _format_endpoint,
+    _run_event_loop,
 )
 from pydantic import ValidationError
 import pytest
@@ -362,3 +363,73 @@ def test_api_handler_url_no_warnings(api_handler, recwarn):
 )
 def test_format_endpoint(server_url, endpoint, expected):
     assert _format_endpoint(server_url, endpoint) == expected
+
+
+def test_api_handler_add_generic_token(api_handler):
+    """
+    Add a token to the APIHandler class, without specifying a service, and make
+    sure it's applied to each service.
+    """
+    api_handler.set_headers(None, {"generic_token": "password123"})
+
+    assert api_handler.headers == {
+        endpoint: {"generic_token": "password123"} for endpoint in api_handler.endpoints
+    }
+
+    api_handler.clear_headers(None)
+
+    assert api_handler.headers == {endpoint: {} for endpoint in api_handler.endpoints}
+
+
+def test_api_handler_add_single_service_token(api_handler):
+    """
+    Add a token to the APIHandler class, specifying a service, and make sure it's
+    only applied to that service.
+    """
+    endpoints = [k for k in api_handler.endpoints.keys()]
+    specified_service, *unspecified_services = endpoints
+    api_handler.set_headers(specified_service, {"catalog_token": "password123"})
+
+    assert api_handler.headers == {
+        specified_service: {"catalog_token": "password123"},
+        **{service: {} for service in unspecified_services},
+    }
+
+    api_handler.clear_headers("intake_catalog")
+
+    assert api_handler.headers == {endpoint: {} for endpoint in api_handler.endpoints}
+
+
+def test_api_handler_sends_correct_headers(api_handler, httpserver):
+    api_handler.server_url = httpserver.url_for("/")
+    api_handler.endpoints = {"endpoint": "endpoint"}
+    api_handler.set_headers(None, {"generic_token": "password123"})
+    httpserver.expect_request(
+        "/endpoint", headers={"generic_token": "password123"}
+    ).respond_with_data("Request received")
+    api_handler.send_api_request(
+        service_name="endpoint",
+        function_name="test",
+        args=[1, 2, 3],
+        kwargs={"random": "item"},
+    )
+
+
+def test_api_handler_raises_invalid_service_headers(api_handler):
+    """
+    Make sure that we can't set headers for a service that doesn't exist.
+    """
+    with pytest.raises(KeyError):
+        api_handler.set_headers("invalid_service", {"catalog_token": "password123"})
+
+    with pytest.raises(KeyError):
+        api_handler.clear_headers("invalid_service")
+
+
+def test__run_event_loop(httpserver):
+    """
+    USe the _run_event_loop function to send a request to a server, and make sure
+    that the request is sent correctly.
+    """
+    _run_event_loop(httpserver.url_for("/"), {}, {})
+    httpserver.assert_request_made(RequestMatcher("/"), count=1)

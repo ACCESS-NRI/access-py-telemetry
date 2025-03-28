@@ -8,6 +8,7 @@ from access_py_telemetry.api import (
     ApiHandler,
     send_in_loop,
     _format_endpoint,
+    _run_event_loop,
 )
 from pydantic import ValidationError
 import pytest
@@ -412,3 +413,23 @@ def test_api_handler_sends_correct_headers(api_handler, httpserver):
         args=[1, 2, 3],
         kwargs={"random": "item"},
     )
+
+
+def test_api_handler_raises_invalid_service_headers(api_handler):
+    """
+    Make sure that we can't set headers for a service that doesn't exist.
+    """
+    with pytest.raises(KeyError):
+        api_handler.set_headers("invalid_service", {"catalog_token": "password123"})
+
+    with pytest.raises(KeyError):
+        api_handler.clear_headers("invalid_service")
+
+
+def test__run_event_loop(httpserver):
+    """
+    USe the _run_event_loop function to send a request to a server, and make sure
+    that the request is sent correctly.
+    """
+    _run_event_loop(httpserver.url_for("/"), {}, {})
+    httpserver.assert_request_made(RequestMatcher("/"), count=1)

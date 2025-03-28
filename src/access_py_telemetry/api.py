@@ -40,6 +40,7 @@ class ApiHandler:
 
     _instance = None
     endpoints = {service: endpoint for service, endpoint in ENDPOINTS.items()}
+    headers: dict[str, dict[str, str]] = {service: {} for service in ENDPOINTS}
     _extra_fields: dict[str, dict[str, Any]] = {ep_name: {} for ep_name in ENDPOINTS}
     _pop_fields: dict[str, list[str]] = {}
     _request_timeout = None
@@ -72,6 +73,41 @@ class ApiHandler:
         if service_name not in self.endpoints:
             raise KeyError(f"Endpoint for '{service_name}' not found")
         self._extra_fields[service_name] = fields
+        return None
+
+    @pydantic.validate_call
+    def set_headers(
+        self, service_names: str | Iterable[str] | None, headers: dict[str, str]
+    ) -> None:
+        """
+        Add headers to the telemetry request for a given service or services, if
+        specified.
+
+        If service_name is None, the headers will be added to all services.
+        """
+        if isinstance(service_names, str):
+            service_names = [service_names]
+
+        for service_name in service_names or self.endpoints:
+            if service_name not in self.endpoints:
+                raise KeyError(f"Endpoint for '{service_name}' not found")
+            self.headers[service_name] = headers
+        return None
+
+    @pydantic.validate_call
+    def clear_headers(self, service_names: str | Iterable[str] | None) -> None:
+        """
+        Clear the headers for a given service or services, if specified.
+
+        If service_name is None, the headers will be cleared for all services.
+        """
+        if isinstance(service_names, str):
+            service_names = [service_names]
+
+        for service_name in service_names or self.endpoints:
+            if service_name not in self.endpoints:
+                raise KeyError(f"Endpoint for '{service_name}' not found")
+            self.headers[service_name] = {}
         return None
 
     @property
@@ -151,6 +187,8 @@ class ApiHandler:
 
         Parameters
         ----------
+        service_name : str
+            The name of the service to send the telemetry data to.
         function_name : str
             The name of the function being tracked.
         args : list
@@ -180,10 +218,16 @@ class ApiHandler:
                 f"Endpoint for '{service_name}' not found in {self.endpoints}"
             ) from e
 
+        telemetry_headers = self.headers.get(service_name, {})
+
         endpoint = _format_endpoint(self.server_url, endpoint)
 
         send_in_loop(
-            endpoint, telemetry_data, self._request_timeout, self._mproc_override
+            endpoint,
+            telemetry_data,
+            telemetry_headers,
+            self._request_timeout,
+            self._mproc_override,
         )
         return None
 
@@ -196,6 +240,7 @@ class ApiHandler:
     ) -> dict[str, Any]:
         """
         Create and return a telemetry record, cache it as an instance attribute.
+
 
         Notes
         -----
@@ -259,7 +304,9 @@ class SessionID:
         return str(uuid.uuid4())
 
 
-async def send_telemetry(endpoint: str, data: dict[str, Any]) -> None:
+async def send_telemetry(
+    endpoint: str, data: dict[str, Any], headers: dict[str, str]
+) -> None:
     """
     Asynchronously send telemetry data to the specified endpoint.
 
@@ -278,7 +325,10 @@ async def send_telemetry(endpoint: str, data: dict[str, Any]) -> None:
     RuntimeWarning
         If the request fails.
     """
-    headers = {"Content-Type": "application/json"}
+    headers = {
+        "Content-Type": "application/json",
+        **headers,
+    }
     async with httpx.AsyncClient() as client:
         try:
             print(f"Posting telemetry to {endpoint}")
@@ -292,6 +342,7 @@ async def send_telemetry(endpoint: str, data: dict[str, Any]) -> None:
 def send_in_loop(
     endpoint: str,
     telemetry_data: dict[str, Any],
+    telemetry_headers: dict[str, str] | None = None,
     timeout: float | None = None,
     mproc_override: str | None = None,
 ) -> None:
@@ -308,10 +359,13 @@ def send_in_loop(
         The URL to send the telemetry data to.
     telemetry_data : dict
         The telemetry data to send.
+    headers : dict, optional
+        The headers to send the telemetry data with.
     timeout : float, optional
         The maximum time to wait for the coroutine to finish. If the coroutine takes
         longer than this time, a TimeoutError will be raised. If None, the coroutine
-        will terminate after 60 seconds.
+        will terminate after 60 seconds. Timeout will also revert to 60 seconds if
+        set to 0.
     mproc_override : str, optional
         The multiprocessing context to use. If None, the context will be set to "fork"
         on Linux systems and "spawn" on Windows/ MacOS systems. If a context is specified,
@@ -324,16 +378,24 @@ def send_in_loop(
     """
     timeout = timeout or 60
 
+    telemetry_headers = telemetry_headers or {}
+
     try:
         loop = asyncio.get_running_loop()
     except RuntimeError:
-        _run_in_proc(endpoint, telemetry_data, timeout, mproc_override)
+        _run_in_proc(
+            endpoint, telemetry_data, telemetry_headers, timeout, mproc_override
+        )
     else:
-        loop.create_task(send_telemetry(endpoint, telemetry_data))
+        loop.create_task(send_telemetry(endpoint, telemetry_data, telemetry_headers))
         return None
 
 
-def _run_event_loop(endpoint: str, telemetry_data: dict[str, Any]) -> None:
+def _run_event_loop(
+    endpoint: str,
+    telemetry_data: dict[str, Any],
+    telemetry_headers: dict[str, str] | None = None,
+) -> None:
     """
     Handles the creation and running of an event loop for sending telemetry data.
     This function is intended to be run in a separate process, and will:
@@ -352,16 +414,18 @@ def _run_event_loop(endpoint: str, telemetry_data: dict[str, Any]) -> None:
     -------
     None
     """
+    telemetry_headers = telemetry_headers or {}
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
-    loop.run_until_complete(send_telemetry(endpoint, telemetry_data))
+    loop.run_until_complete(send_telemetry(endpoint, telemetry_data, telemetry_headers))
 
 
 def _run_in_proc(
     endpoint: str,
     telemetry_data: dict[str, Any],
-    timeout: float,
-    mproc_override: str | None,
+    telemetry_headers: dict[str, str] | None,
+    timeout: float = 60,
+    mproc_override: str | None = None,
 ) -> None:
     """
     Handles the creation and running of a separate process for sending telemetry data.
@@ -379,6 +443,8 @@ def _run_in_proc(
         The telemetry data to send.
     timeout : float
         The maximum time to wait for the process to finish.
+    telemetry_headers : dict, optional
+        The headers to send the telemetry data with.
     mproc_override : str, optional
         The multiprocessing context to use. If None, the context will be set to "fork"
         on Linux systems and "spawn" on Windows systems. If a context is specified, it
@@ -389,6 +455,8 @@ def _run_in_proc(
     None
 
     """
+    telemetry_headers = telemetry_headers or {}
+
     if not mproc_override:
         ctx_type = "fork" if platform.system().lower() == "linux" else "spawn"
     else:
@@ -396,7 +464,7 @@ def _run_in_proc(
 
     # Mypy gets upset below because it doesn't know we wont use "fork" on Windows
     proc = multiprocessing.get_context(ctx_type).Process(  # type: ignore
-        target=_run_event_loop, args=(endpoint, telemetry_data)
+        target=_run_event_loop, args=(endpoint, telemetry_data, telemetry_headers)
     )
     proc.start()
     proc.join(timeout)

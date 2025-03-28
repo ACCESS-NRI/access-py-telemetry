@@ -4,6 +4,7 @@
 """Tests for the AST module"""
 
 import ast
+import sys
 import pytest
 from access_py_telemetry.ast import CallListener
 from unittest.mock import MagicMock
@@ -40,8 +41,9 @@ mycall = instance.func()
 instance.uncaught_func()
 """
 
-    exec(mock_info.raw_cell)
-    mock_user_ns = locals()
+    f = sys._getframe()
+    exec(mock_info.raw_cell, globals(), f.f_locals)
+    mock_user_ns = f.f_locals
 
     mock_registry = {"mock": ["MyClass.func"]}
 
@@ -74,8 +76,9 @@ unregistered_func()
 
 """
 
-    exec(mock_info.raw_cell)
-    mock_user_ns = locals()
+    f = sys._getframe()
+    exec(mock_info.raw_cell, globals(), f.f_locals)
+    mock_user_ns = f.f_locals
 
     mock_registry = {"mock": ["registered_func"]}
 
@@ -117,8 +120,9 @@ unregistered_func()
 
 """
 
-    exec(mock_info.raw_cell)
-    mock_user_ns = locals()
+    f = sys._getframe()
+    exec(mock_info.raw_cell, globals(), f.f_locals)
+    mock_user_ns = f.f_locals
 
     mock_registry = {"mock": ["registered_func"]}
 
@@ -154,8 +158,9 @@ MyClass().func()
 
 """
 
-    exec(mock_info.raw_cell)
-    mock_user_ns = locals()
+    f = sys._getframe()
+    exec(mock_info.raw_cell, globals(), f.f_locals)
+    mock_user_ns = f.f_locals
 
     mock_registry = {"mock": ["MyClass.func"]}
 
@@ -192,8 +197,9 @@ MyClass.func(instance)
 
 """
 
-    exec(mock_info.raw_cell)
-    mock_user_ns = locals()
+    f = sys._getframe()
+    exec(mock_info.raw_cell, globals(), f.f_locals)
+    mock_user_ns = f.f_locals
 
     mock_registry = {"mock": ["MyClass.class_func"]}
 
@@ -229,8 +235,9 @@ l[0]
 
 """
 
-    exec(mock_info.raw_cell)
-    mock_user_ns = locals()
+    f = sys._getframe()
+    exec(mock_info.raw_cell, globals(), f.f_locals)
+    mock_user_ns = f.f_locals
 
     mock_registry = {"mock": ["MyClass.__getitem__", "list.__getitem__"]}
 
@@ -257,8 +264,9 @@ os.path.join("some","paths")
 
 """
 
-    exec(mock_info.raw_cell)
-    mock_user_ns = locals()
+    f = sys._getframe()
+    exec(mock_info.raw_cell, globals(), f.f_locals)
+    mock_user_ns = f.f_locals
 
     mock_registry = {"mock": ["os.path.join"]}
 
@@ -284,8 +292,9 @@ operating_system.path.join("some","paths")
 
 """
 
-    exec(mock_info.raw_cell)
-    mock_user_ns = locals()
+    f = sys._getframe()
+    exec(mock_info.raw_cell, globals(), f.f_locals)
+    mock_user_ns = f.f_locals
 
     mock_registry = {"mock": ["os.path.join"]}
 
@@ -310,8 +319,9 @@ intake.cat.access_nri
 
 """
 
-    exec(mock_info.raw_cell)
-    mock_user_ns = locals()
+    f = sys._getframe()
+    exec(mock_info.raw_cell, globals(), f.f_locals)
+    mock_user_ns = f.f_locals
 
     mock_registry = {"mock": ["intake.cat.access_nri"]}
 
@@ -336,8 +346,9 @@ cat = intake.cat.access_nri
 
 """
 
-    exec(mock_info.raw_cell)
-    mock_user_ns = locals()
+    f = sys._getframe()
+    exec(mock_info.raw_cell, globals(), f.f_locals)
+    mock_user_ns = f.f_locals
 
     mock_registry = {"mock": ["intake.cat.access_nri"]}
 
@@ -367,12 +378,9 @@ import intake
 intake.cat.access_nri
 """
 
-    import intake
-
-    mock_user_ns = {
-        "intake": intake,
-        "intake.cat.access_nri": intake.cat.access_nri,
-    }
+    f = sys._getframe()
+    exec(mock_info.raw_cell, globals(), f.f_locals)
+    mock_user_ns = f.f_locals
 
     mock_registry = {"mock": ["intake.catalog.Catalog.__init__"]}
 

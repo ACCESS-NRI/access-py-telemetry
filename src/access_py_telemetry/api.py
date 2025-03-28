@@ -83,7 +83,7 @@ class ApiHandler:
         Add headers to the telemetry request for a given service or services, if
         specified.
 
-        If service_name is None, the headers will be added to all services.
+        If service_names is None, the headers will be added to all services.
         """
         if isinstance(service_names, str):
             service_names = [service_names]
@@ -99,7 +99,7 @@ class ApiHandler:
         """
         Clear the headers for a given service or services, if specified.
 
-        If service_name is None, the headers will be cleared for all services.
+        If service_names is None, the headers will be cleared for all services.
         """
         if isinstance(service_names, str):
             service_names = [service_names]

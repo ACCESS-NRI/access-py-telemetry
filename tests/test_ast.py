@@ -97,6 +97,51 @@ unregistered_func()
     assert "uncaught_func" not in visitor._caught_calls
 
 
+def test_ast_unparse_bare_function():
+    mock_info = MockInfo()
+    mock_info.raw_cell = """
+
+import pandas as pd
+
+def registered_func():
+    return None
+
+def registered_func2(x):
+    return None
+
+
+def unregistered_func():
+    return None
+
+registered_func()
+unregistered_func()
+
+registered_func2(pd.DataFrame())
+
+"""
+
+    f = sys._getframe()
+    exec(mock_info.raw_cell, globals(), f.f_locals)
+    mock_user_ns = f.f_locals
+
+    mock_registry = {"mock": ["registered_func", "registered_func2"]}
+
+    mock_api_handler = MagicMock()
+
+    tree = ast.parse(mock_info.raw_cell)
+
+    visitor = CallListener(mock_user_ns, mock_registry, mock_api_handler)
+
+    visitor.visit(tree)
+
+    assert visitor._caught_calls == {
+        "registered_func",
+        "registered_func2",
+    }
+
+    assert "uncaught_func" not in visitor._caught_calls
+
+
 @pytest.mark.xfail
 def test_ast_aliased_function():
     """

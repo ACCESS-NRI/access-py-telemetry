@@ -32,7 +32,16 @@ class ProductionToggle:
     This class is a singleton so that the production status can be set once and
     accessed from anywhere in the code.
 
-    We expose a couple of
+    Exposed functionality:
+    - production: bool
+        Whether the code is running in production or not. Setting this will also
+        set the server URL to the production or staging URL.
+    - debug: Callable
+        A decorator that wraps a function in a try/except block. If the code is
+        running in production, the function will be called normally. If the code
+        is not running in production, the function will be called and any
+        exceptions will be ignored. This is useful for debugging purposes.
+
     """
 
     _production = True
@@ -98,6 +107,12 @@ class ProductionToggle:
             return wrapper
 
         return decorator
+
+    def __str__(self) -> str:
+        return f"ProductionToggle(production={self._production})"
+
+    def __repr__(self) -> str:
+        return f"ProductionToggle(production={self._production})"
 
 
 TOGGLE = ProductionToggle()
@@ -289,12 +304,7 @@ class ApiHandler:
             service_name, function_name, args, kwargs
         )
 
-        try:
-            endpoint = self.endpoints[service_name]
-        except KeyError as e:
-            raise KeyError(
-                f"Endpoint for '{service_name}' not found in {self.endpoints}"
-            ) from e
+        endpoint = self._get_endpoints(service_name)
 
         telemetry_headers = self.headers.get(service_name, {})
 
@@ -308,6 +318,18 @@ class ApiHandler:
             self._mproc_override,
         )
         return None
+
+    def _get_endpoints(self, service_name: str) -> str:
+        """
+        Get the endpoint for a given service name.
+        """
+        try:
+            endpoint = self.endpoints[service_name]
+        except KeyError as e:
+            raise KeyError(
+                f"Endpoint for '{service_name}' not found in {self.endpoints}"
+            ) from e
+        return endpoint
 
     def _create_telemetry_record(
         self,

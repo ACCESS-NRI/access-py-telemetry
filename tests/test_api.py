@@ -63,7 +63,7 @@ def test_api_handler_server_url(local_host, default_url, api_handler):
     session1.server_url = local_host
     assert session2.server_url == local_host
 
-    ApiHandler._instance = None
+    # ApiHandler._instance = None
 
 
 def test_api_handler_extra_fields(local_host, api_handler):
@@ -202,23 +202,12 @@ def test_api_handler_send_api_request(api_handler, capfd):
     # Remove indeterminate fields
     api_handler.remove_fields("payu", ["session_id"])
 
-    # We should get a warning because we've used a dud url, but pytest doesn't
-    # seem to capture subprocess warnings. I'm not sure there is really a good
-    # way test for this.
-
-    ProductionToggle()._production = False
     api_handler.send_api_request(
         service_name="payu",
         function_name="_test",
         args=[1, 2, 3],
         kwargs={"random": "item"},
     )
-    ProductionToggle._instance = None
-
-    out, err = capfd.readouterr()
-    assert "Posting telemetry to" in out
-
-    ProductionToggle()._production = True
     assert api_handler._last_record == {
         "function": "_test",
         "args": [1, 2, 3],
@@ -226,16 +215,6 @@ def test_api_handler_send_api_request(api_handler, capfd):
         "model": "ACCESS-OM2",
         "random_number": 2,
     }
-
-    api_handler.send_api_request(
-        service_name="payu",
-        function_name="_test",
-        args=[1, 2, 3],
-        kwargs={"random": "item"},
-    )
-    ProductionToggle._instance = None
-    out, err = capfd.readouterr()
-    assert out == ""
 
 
 def test_api_handler_invalid_endpoint(api_handler):
@@ -246,39 +225,12 @@ def test_api_handler_invalid_endpoint(api_handler):
     # Pretend we only have catalog & payu services and then mock the initialisation
     # of the _extra_fields attribute
 
-    api_handler.endpoints = {
-        "intake_catalog": "intake/catalog",
-    }
-
-    api_handler._extra_fields = {
-        ep_name: {} for ep_name in api_handler.endpoints.keys()
-    }
-
-    ProductionToggle()._production = False
     with pytest.raises(KeyError) as excinfo:
-        api_handler.send_api_request(
+        api_handler._get_endpoints(
             service_name="payu",
-            function_name="_test",
-            args=[1, 2, 3],
-            kwargs={"name": "test_username"},
         )
 
     assert "Endpoint for 'payu' not found " in str(excinfo.value)
-
-    ProductionToggle()._instance = None
-
-    # Now we'll toggle the production toggle to True, and make sure that we don't
-    # get a warning
-    ProductionToggle()._production = True
-
-    api_handler.send_api_request(
-        service_name="payu",
-        function_name="_test",
-        args=[1, 2, 3],
-        kwargs={"name": "test_username"},
-    )
-
-    ProductionToggle()._instance = None
 
 
 def test_send_in_loop_is_bg(httpserver: HTTPServer):

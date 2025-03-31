@@ -10,6 +10,7 @@ from access_py_telemetry.api import (
     send_in_loop,
     _format_endpoint,
     _run_event_loop,
+    send_telemetry,
 )
 from pydantic import ValidationError
 import pytest
@@ -433,6 +434,9 @@ def test_production_toggle(production_toggle, api_handler):
     assert production_toggle._production
     assert production_toggle.production
 
+    s = str(production_toggle)
+    assert s == "ProductionToggle(production=True)"
+
     # Check that the production toggle can be set to False
     production_toggle.production = False
 
@@ -449,3 +453,30 @@ def test_production_toggle(production_toggle, api_handler):
 
     with pytest.raises(TypeError):
         production_toggle.production = 1
+
+
+@pytest.mark.asyncio
+async def test_send_telemetry(capfd):
+    """
+    Test the send_telemetry function.
+    """
+
+    await send_telemetry(
+        endpoint="http://localhost:8000",
+        data={"key": "value"},
+        headers={},
+        printout=True,
+    )
+
+    captured = capfd.readouterr()
+
+    assert "Posting telemetry to " in captured.out
+
+    await send_telemetry(
+        endpoint="http://localhost:8000",
+        data={"key": "value"},
+        headers={},
+        printout=False,
+    )
+    captured = capfd.readouterr()
+    assert not captured.out

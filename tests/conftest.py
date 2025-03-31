@@ -6,7 +6,7 @@ from access_py_telemetry.registry import TelemetryRegister
 
 
 @fixture
-def api_handler():
+def api_handler(production_toggle):
     """
     Get an instance of the APIHandler class, and then reset it after the test.
 

@@ -4,7 +4,8 @@ SPDX-License-Identifier: Apache-2.0
 """
 
 from functools import wraps
-from typing import Any, Type, Iterable, Self, Callable
+import sys
+from typing import Any, Type, Iterable, Callable
 import warnings
 import platform
 import uuid
@@ -17,6 +18,11 @@ import multiprocessing
 from pathlib import Path, PurePosixPath
 
 from .utils import ENDPOINTS
+
+if sys.version_info >= (3, 11):
+    from typing import Self
+else:
+    from typing_extensions import Self
 
 with open(Path(__file__).parent / "config.yaml", "r") as f:
     config = yaml.safe_load(f)

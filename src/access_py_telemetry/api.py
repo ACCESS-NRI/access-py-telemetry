@@ -3,7 +3,9 @@ Copyright 2022 ACCESS-NRI and contributors. See the top-level COPYRIGHT file for
 SPDX-License-Identifier: Apache-2.0
 """
 
-from typing import Any, Type, TypeVar, Iterable
+from functools import wraps
+import sys
+from typing import Any, Type, Iterable, Callable
 import warnings
 import platform
 import uuid
@@ -17,13 +19,109 @@ from pathlib import Path, PurePosixPath
 
 from .utils import ENDPOINTS
 
-S = TypeVar("S", bound="SessionID")
-H = TypeVar("H", bound="ApiHandler")
+if sys.version_info >= (3, 11):
+    from typing import Self
+else:
+    from typing_extensions import Self
 
 with open(Path(__file__).parent / "config.yaml", "r") as f:
     config = yaml.safe_load(f)
 
 NRI_USER = True
+
+
+class ProductionToggle:
+    """
+    Singleton class to hold info about whether the code is running in production
+    or not.
+
+    This class is a singleton so that the production status can be set once and
+    accessed from anywhere in the code.
+
+    Exposed functionality:
+    - production: bool
+        Whether the code is running in production or not. Setting this will also
+        set the server URL to the production or staging URL.
+    - debug: Callable
+        A decorator that wraps a function in a try/except block. If the code is
+        running in production, the function will be called normally. If the code
+        is not running in production, the function will be called and any
+        exceptions will be ignored. This is useful for debugging purposes.
+
+    """
+
+    _production = True
+    _instance = None
+
+    PRODUCTION_URL = "https://reporting.access-nri-store.cloud.edu.au/api/"
+    STAGING_URL = "https://reporting-dev.access-nri-store.cloud.edu.au/api/"
+
+    def __new__(cls: Type[Self]) -> Self:
+        if not cls._instance:
+            cls._instance = super().__new__(cls)
+        return cls._instance
+
+    def __init__(self) -> None:
+        if hasattr(self, "initialized"):
+            return None
+        self.initialized = True
+
+    @property
+    def production(self) -> bool:
+        return self._production
+
+    @production.setter
+    def production(self, prod: bool) -> None:
+        """
+        Set the production status.
+        """
+        if not isinstance(prod, bool):
+            raise TypeError("Production status must be a boolean")
+        if prod:
+            ApiHandler().server_url = self.PRODUCTION_URL
+        else:
+            ApiHandler().server_url = self.STAGING_URL
+        self._production = prod
+        return None
+
+    def debug(self) -> Callable[..., Any]:
+        """
+        Debugging decorator. Applying this to a function will wrap all telemetry
+        calls in try/except blocks so that users never see any exceptions from
+        the telemetry code.
+
+        Notes
+        -----
+        We have to apply the branching logic *within* the decorator, because
+        otherwise the logic gets applied at initialization time, and we can't
+        change the production status after that.
+        """
+
+        def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
+            @wraps(func)
+            def wrapper(*args: Any, **kwargs: Any) -> Any:
+                if self.production:
+                    try:
+                        with warnings.catch_warnings():
+                            warnings.simplefilter("ignore")
+                            return func(*args, **kwargs)
+                    except Exception:
+                        return None
+                else:
+                    return func(*args, **kwargs)
+
+            return wrapper
+
+        return decorator
+
+    def __str__(self) -> str:
+        return f"ProductionToggle(production={self._production})"
+
+    def __repr__(self) -> str:
+        return f"ProductionToggle(production={self._production})"
+
+
+TOGGLE = ProductionToggle()
 
 
 class ApiHandler:
@@ -46,7 +144,7 @@ class ApiHandler:
     _request_timeout = None
     _mproc_override = None
 
-    def __new__(cls: Type[H], *args: Any, **kwargs: Any) -> H:
+    def __new__(cls: Type[Self], *args: Any, **kwargs: Any) -> Self:
         if cls._instance is None:
             cls._instance = super().__new__(cls)
         return cls._instance
@@ -175,6 +273,7 @@ class ApiHandler:
             fields = [fields]
         self._pop_fields[service] = list(fields)
 
+    @TOGGLE.debug()
     def send_api_request(
         self,
         service_name: str,
@@ -211,12 +310,7 @@ class ApiHandler:
             service_name, function_name, args, kwargs
         )
 
-        try:
-            endpoint = self.endpoints[service_name]
-        except KeyError as e:
-            raise KeyError(
-                f"Endpoint for '{service_name}' not found in {self.endpoints}"
-            ) from e
+        endpoint = self._get_endpoints(service_name)
 
         telemetry_headers = self.headers.get(service_name, {})
 
@@ -230,6 +324,18 @@ class ApiHandler:
             self._mproc_override,
         )
         return None
+
+    def _get_endpoints(self, service_name: str) -> str:
+        """
+        Get the endpoint for a given service name.
+        """
+        try:
+            endpoint = self.endpoints[service_name]
+        except KeyError as e:
+            raise KeyError(
+                f"Endpoint for '{service_name}' not found in {self.endpoints}"
+            ) from e
+        return endpoint
 
     def _create_telemetry_record(
         self,
@@ -281,7 +387,7 @@ class SessionID:
 
     _instance = None
 
-    def __new__(cls: Type[S]) -> S:
+    def __new__(cls: type[Self]) -> Self:
         if not cls._instance:
             cls._instance = super().__new__(cls)
         return cls._instance
@@ -305,7 +411,7 @@ class SessionID:
 
 
 async def send_telemetry(
-    endpoint: str, data: dict[str, Any], headers: dict[str, str]
+    endpoint: str, data: dict[str, Any], headers: dict[str, str], printout: bool = False
 ) -> None:
     """
     Asynchronously send telemetry data to the specified endpoint.
@@ -315,6 +421,13 @@ async def send_telemetry(
     endpoint : str
         The URL to send the telemetry data to.
     data : dict
+        The telemetry data to send.
+    headers : dict
+        The headers to send the telemetry data with.
+    printout : bool, optional
+        If True, print the telemetry data to the console. Default is False. Needed
+        because we push stuff out to subprocesses, so we can't trust our production
+        toggle in the subprocesses.
 
     Returns
     -------
@@ -331,7 +444,8 @@ async def send_telemetry(
     }
     async with httpx.AsyncClient() as client:
         try:
-            print(f"Posting telemetry to {endpoint}")
+            if printout:
+                print(f"Posting telemetry to {endpoint}")
             response = await client.post(endpoint, json=data, headers=headers)
             response.raise_for_status()
         except (httpx.RequestError, httpx.HTTPStatusError) as e:
@@ -395,6 +509,7 @@ def _run_event_loop(
     endpoint: str,
     telemetry_data: dict[str, Any],
     telemetry_headers: dict[str, str] | None = None,
+    printout: bool = False,
 ) -> None:
     """
     Handles the creation and running of an event loop for sending telemetry data.
@@ -409,6 +524,8 @@ def _run_event_loop(
         The URL to send the telemetry data to.
     telemetry_data : dict
         The telemetry data to send.
+    telemetry_headers : dict, optional
+        The headers to send the telemetry data with.
 
     Returns
     -------
@@ -417,7 +534,9 @@ def _run_event_loop(
     telemetry_headers = telemetry_headers or {}
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
-    loop.run_until_complete(send_telemetry(endpoint, telemetry_data, telemetry_headers))
+    loop.run_until_complete(
+        send_telemetry(endpoint, telemetry_data, telemetry_headers, printout)
+    )
 
 
 def _run_in_proc(
@@ -456,6 +575,7 @@ def _run_in_proc(
 
     """
     telemetry_headers = telemetry_headers or {}
+    printout = not TOGGLE._production
 
     if not mproc_override:
         ctx_type = "fork" if platform.system().lower() == "linux" else "spawn"
@@ -464,7 +584,8 @@ def _run_in_proc(
 
     # Mypy gets upset below because it doesn't know we wont use "fork" on Windows
     proc = multiprocessing.get_context(ctx_type).Process(  # type: ignore
-        target=_run_event_loop, args=(endpoint, telemetry_data, telemetry_headers)
+        target=_run_event_loop,
+        args=(endpoint, telemetry_data, telemetry_headers, printout),
     )
     proc.start()
     proc.join(timeout)

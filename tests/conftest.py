@@ -1,6 +1,6 @@
 # type: ignore
 from pytest import fixture
-from access_py_telemetry.api import ApiHandler
+from access_py_telemetry.api import ApiHandler, ProductionToggle
 from access_py_telemetry.utils import ENDPOINTS
 from access_py_telemetry.registry import TelemetryRegister
 
@@ -28,3 +28,21 @@ def reset_telemetry_register():
     """
     yield TelemetryRegister
     TelemetryRegister._instances = {}
+
+
+@fixture
+def production_toggle():
+    """
+    Get the production toggle for the APIHandler class.
+    """
+    _ = ProductionToggle()
+    del _
+    yield ProductionToggle()
+    ProductionToggle._instance = None
+    ProductionToggle._production = True
+    ProductionToggle.STAGING_URL = (
+        "https://staging-reporting.access-nri-store.cloud.edu.au/api/"
+    )
+    ProductionToggle.PRODUCTION_URL = (
+        "https://reporting.access-nri-store.cloud.edu.au/api/"
+    )

@@ -6,9 +6,11 @@
 from access_py_telemetry.api import (
     SessionID,
     ApiHandler,
+    ProductionToggle,
     send_in_loop,
     _format_endpoint,
     _run_event_loop,
+    send_telemetry,
 )
 from pydantic import ValidationError
 import pytest
@@ -62,7 +64,7 @@ def test_api_handler_server_url(local_host, default_url, api_handler):
     session1.server_url = local_host
     assert session2.server_url == local_host
 
-    ApiHandler._instance = None
+    # ApiHandler._instance = None
 
 
 def test_api_handler_extra_fields(local_host, api_handler):
@@ -174,11 +176,14 @@ def test_api_handler_remove_fields(api_handler):
     api_handler.remove_fields("payu", "model")
 
 
-def test_api_handler_send_api_request(api_handler, capsys):
+def test_api_handler_send_api_request(api_handler, capfd):
     """
     Create and send an API request with telemetry data - just to make sure that
     the request is being sent correctly.
     """
+
+    # Set the private production toggle to false, so that we don't invoke the hook
+    # that changes the server url to the staging server
     api_handler.server_url = "http://dud/host/endpoint"
 
     # Pretend we only have catalog & payu services and then mock the initialisation
@@ -198,16 +203,12 @@ def test_api_handler_send_api_request(api_handler, capsys):
     # Remove indeterminate fields
     api_handler.remove_fields("payu", ["session_id"])
 
-    # We should get a warning because we've used a dud url, but pytest doesn't
-    # seem to capture subprocess warnings. I'm not sure there is really a good
-    # way test for this.
     api_handler.send_api_request(
         service_name="payu",
         function_name="_test",
         args=[1, 2, 3],
         kwargs={"random": "item"},
     )
-
     assert api_handler._last_record == {
         "function": "_test",
         "args": [1, 2, 3],
@@ -215,6 +216,22 @@ def test_api_handler_send_api_request(api_handler, capsys):
         "model": "ACCESS-OM2",
         "random_number": 2,
     }
+
+
+def test_api_handler_invalid_endpoint(api_handler):
+    """
+    Create and send an API request with telemetry data.
+    """
+
+    # Pretend we only have catalog & payu services and then mock the initialisation
+    # of the _extra_fields attribute
+
+    with pytest.raises(KeyError) as excinfo:
+        api_handler._get_endpoints(
+            service_name="payu",
+        )
+
+    assert "Endpoint for 'payu' not found " in str(excinfo.value)
 
 
 def test_send_in_loop_is_bg(httpserver: HTTPServer):
@@ -251,33 +268,6 @@ def test_send_in_loop_is_bg(httpserver: HTTPServer):
 
     assert dt < 4
     assert len(httpserver.log) == 6
-
-
-def test_api_handler_invalid_endpoint(api_handler):
-    """
-    Create and send an API request with telemetry data.
-    """
-
-    # Pretend we only have catalog & payu services and then mock the initialisation
-    # of the _extra_fields attribute
-
-    api_handler.endpoints = {
-        "intake_catalog": "intake/catalog",
-    }
-
-    api_handler._extra_fields = {
-        ep_name: {} for ep_name in api_handler.endpoints.keys()
-    }
-
-    with pytest.raises(KeyError) as excinfo:
-        api_handler.send_api_request(
-            service_name="payu",
-            function_name="_test",
-            args=[1, 2, 3],
-            kwargs={"name": "test_username"},
-        )
-
-    assert "Endpoint for 'payu' not found " in str(excinfo.value)
 
 
 def test_api_handler_set_timeout(api_handler):
@@ -433,3 +423,60 @@ def test__run_event_loop(httpserver):
     """
     _run_event_loop(httpserver.url_for("/"), {}, {})
     httpserver.assert_request_made(RequestMatcher("/"), count=1)
+
+
+def test_production_toggle(production_toggle, api_handler):
+    """
+    Make sure that the production toggle works as expected.
+    """
+
+    # Check that the production toggle is set to True by default
+    assert production_toggle._production
+    assert production_toggle.production
+
+    s = str(production_toggle)
+    assert s == "ProductionToggle(production=True)"
+
+    # Check that the production toggle can be set to False
+    production_toggle.production = False
+
+    assert not production_toggle._production
+    assert not production_toggle.production
+    assert api_handler.server_url == ProductionToggle.STAGING_URL
+
+    # Check that the production toggle can be set back to True
+    production_toggle.production = True
+
+    assert production_toggle._production
+    assert production_toggle.production
+    assert api_handler.server_url == ProductionToggle.PRODUCTION_URL
+
+    with pytest.raises(TypeError):
+        production_toggle.production = 1
+
+
+@pytest.mark.asyncio
+async def test_send_telemetry(capfd):
+    """
+    Test the send_telemetry function.
+    """
+
+    await send_telemetry(
+        endpoint="http://localhost:8000",
+        data={"key": "value"},
+        headers={},
+        printout=True,
+    )
+
+    captured = capfd.readouterr()
+
+    assert "Posting telemetry to " in captured.out
+
+    await send_telemetry(
+        endpoint="http://localhost:8000",
+        data={"key": "value"},
+        headers={},
+        printout=False,
+    )
+    captured = capfd.readouterr()
+    assert not captured.out

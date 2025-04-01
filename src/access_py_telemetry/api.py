@@ -539,7 +539,7 @@ def _run_event_loop(
     warn : bool, optional
         If True, a warning will be raised if the request fails. If False, no
         warning will be raised. If None, warn will default the value of
-        ` not ProductionToggle().production`. It wil also enable some status info
+        ` not ProductionToggle().production`. It will also enable some status info
         about the request being sent.
 
     Returns

@@ -411,7 +411,10 @@ class SessionID:
 
 
 async def send_telemetry(
-    endpoint: str, data: dict[str, Any], headers: dict[str, str], printout: bool = False
+    endpoint: str,
+    data: dict[str, Any],
+    headers: dict[str, str],
+    warn: bool | None = None,
 ) -> None:
     """
     Asynchronously send telemetry data to the specified endpoint.
@@ -424,10 +427,11 @@ async def send_telemetry(
         The telemetry data to send.
     headers : dict
         The headers to send the telemetry data with.
-    printout : bool, optional
-        If True, print the telemetry data to the console. Default is False. Needed
-        because we push stuff out to subprocesses, so we can't trust our production
-        toggle in the subprocesses.
+    warn : bool, optional
+        If True, a warning will be raised if the request fails. If False, no
+        warning will be raised. If None, warn will default the value of
+        ` not ProductionToggle().production`. It wil also enable some status info
+        about the request being sent.
 
     Returns
     -------
@@ -438,18 +442,24 @@ async def send_telemetry(
     RuntimeWarning
         If the request fails.
     """
+    if warn is None:
+        warn = not ProductionToggle().production
+
     headers = {
         "Content-Type": "application/json",
         **headers,
     }
     async with httpx.AsyncClient() as client:
         try:
-            if printout:
+            if warn:
                 print(f"Posting telemetry to {endpoint}")
             response = await client.post(endpoint, json=data, headers=headers)
             response.raise_for_status()
         except (httpx.RequestError, httpx.HTTPStatusError) as e:
-            warnings.warn(f"Request failed: {e}", category=RuntimeWarning, stacklevel=2)
+            if warn:
+                warnings.warn(
+                    f"Request failed: {e}", category=RuntimeWarning, stacklevel=2
+                )
     return None
 
 
@@ -509,7 +519,7 @@ def _run_event_loop(
     endpoint: str,
     telemetry_data: dict[str, Any],
     telemetry_headers: dict[str, str] | None = None,
-    printout: bool = False,
+    warn: bool | None = None,
 ) -> None:
     """
     Handles the creation and running of an event loop for sending telemetry data.
@@ -526,16 +536,28 @@ def _run_event_loop(
         The telemetry data to send.
     telemetry_headers : dict, optional
         The headers to send the telemetry data with.
+    warn : bool, optional
+        If True, a warning will be raised if the request fails. If False, no
+        warning will be raised. If None, warn will default the value of
+        ` not ProductionToggle().production`. It will also enable some status info
+        about the request being sent.
 
     Returns
     -------
     None
+
+    Notes
+    -----
+    We pass through warn here as otherwise ProductionToggle() will be initialized
+    in the main process, and we want to avoid that.
     """
+    if warn is None:
+        warn = not ProductionToggle().production
     telemetry_headers = telemetry_headers or {}
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
     loop.run_until_complete(
-        send_telemetry(endpoint, telemetry_data, telemetry_headers, printout)
+        send_telemetry(endpoint, telemetry_data, telemetry_headers, warn)
     )
 
 
@@ -575,7 +597,6 @@ def _run_in_proc(
 
     """
     telemetry_headers = telemetry_headers or {}
-    printout = not TOGGLE._production
 
     if not mproc_override:
         ctx_type = "fork" if platform.system().lower() == "linux" else "spawn"
@@ -585,7 +606,7 @@ def _run_in_proc(
     # Mypy gets upset below because it doesn't know we wont use "fork" on Windows
     proc = multiprocessing.get_context(ctx_type).Process(  # type: ignore
         target=_run_event_loop,
-        args=(endpoint, telemetry_data, telemetry_headers, printout),
+        args=(endpoint, telemetry_data, telemetry_headers),
     )
     proc.start()
     proc.join(timeout)

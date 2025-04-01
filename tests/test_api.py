@@ -8,9 +8,9 @@ from access_py_telemetry.api import (
     ApiHandler,
     ProductionToggle,
     send_in_loop,
+    send_telemetry,
     _format_endpoint,
     _run_event_loop,
-    send_telemetry,
 )
 from pydantic import ValidationError
 import pytest
@@ -455,28 +455,72 @@ def test_production_toggle(production_toggle, api_handler):
         production_toggle.production = 1
 
 
+@pytest.mark.parametrize(
+    "warn_set, response, raise_warning",
+    [
+        (  # No warning on 200
+            True,
+            {"response_data": "Success!", "status": 200},
+            False,
+        ),
+        (  # Warn on 403, if warn_set is True
+            True,
+            {"response_data": "Auth Failure!", "status": 403},
+            True,
+        ),
+        (  # Dont warn on 403, if warn_set is False
+            False,
+            {"response_data": "Auth Failure!", "status": 403},
+            False,
+        ),
+        (  # Warn on 404, if warn_set is True
+            True,
+            {"response_data": "Auth Failure!", "status": 404},
+            True,
+        ),
+        (  # Dont warn on 404, if warn_set is False
+            False,
+            {"response_data": "Auth Failure!", "status": 404},
+            False,
+        ),
+        (  # Warn on 500, if warn_set is True
+            True,
+            {"response_data": "Auth Failure!", "status": 500},
+            True,
+        ),
+        (  # Dont warn on 500, if warn_set is False
+            False,
+            {"response_data": "Auth Failure!", "status": 500},
+            False,
+        ),
+    ],
+)
 @pytest.mark.asyncio
-async def test_send_telemetry(capfd):
+async def test_send_telemetry_warning_toggle(
+    httpserver: HTTPServer, warn_set, response, raise_warning
+):
     """
-    Test the send_telemetry function.
+    Send a request, but make sure that it runs in the background (ie. is non-blocking).
+
+    There will be some overhead associated with the processes startup and teardown,
+    but we shouldn't be waiting for the requests to finish. Using a long timeout
+    and only sending 3 requests should be enough to ensure that we're not accidentally
+    testing the process startup/teardown time.
     """
+    httpserver.expect_request("/endpoint").respond_with_data(**response)
 
-    await send_telemetry(
-        endpoint="http://localhost:8000",
-        data={"key": "value"},
-        headers={},
-        printout=True,
-    )
-
-    captured = capfd.readouterr()
-
-    assert "Posting telemetry to " in captured.out
-
-    await send_telemetry(
-        endpoint="http://localhost:8000",
-        data={"key": "value"},
-        headers={},
-        printout=False,
-    )
-    captured = capfd.readouterr()
-    assert not captured.out
+    if raise_warning:
+        with pytest.warns(RuntimeWarning, match="Request failed"):
+            await send_telemetry(
+                endpoint=httpserver.url_for("/endpoint"),
+                data={},
+                headers={},
+                warn=warn_set,
+            )
+    else:
+        await send_telemetry(
+            endpoint=httpserver.url_for("/endpoint"),
+            data={},
+            headers={},
+            warn=warn_set,
+        )

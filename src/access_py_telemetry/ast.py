@@ -18,7 +18,30 @@ api_handler = ApiHandler()
 
 registries = {registry: TelemetryRegister(registry) for registry in REGISTRIES.keys()}
 
-IPYTHON_MAGIC_PATTERN = r"^\s*[%!?]{1,2}"
+
+def strip_magic(code: str) -> str:
+    """
+    Parse the provided code into an AST (Abstract Syntax Tree).
+
+    Parameters
+    ----------
+
+    code : str
+        The code to parse.
+    Returns
+    -------
+    str
+        The code without IPython magic commands.
+
+    """
+
+    IPYTHON_MAGIC_PATTERN = r"^\s*[%!?]{1,2}|^.*\?\?$"
+
+    code = "\n".join(
+        line for line in code.splitlines() if not re.match(IPYTHON_MAGIC_PATTERN, line)
+    )
+
+    return code
 
 
 def capture_registered_calls(info: ExecutionInfo) -> None:
@@ -40,12 +63,10 @@ def capture_registered_calls(info: ExecutionInfo) -> None:
     if code is None:
         return None
 
-    # Remove lines that contain IPython magic commands
-    code = "\n".join(
-        line for line in code.splitlines() if not re.match(IPYTHON_MAGIC_PATTERN, line)
-    )
+    code = strip_magic(code)
 
     tree = ast.parse(code)
+
     user_namespace: dict[str, Any] = get_ipython().user_ns  # type: ignore
 
     visitor = CallListener(user_namespace, REGISTRIES, api_handler)

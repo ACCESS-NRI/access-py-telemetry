@@ -6,23 +6,13 @@
 import ast
 import sys
 import pytest
-from access_py_telemetry.ast import CallListener
+from access_py_telemetry.ast import CallListener, strip_magic
 from unittest.mock import MagicMock
 
 
 class MockInfo:
     def __init__(self, raw_cell=None):
         self.raw_cell = raw_cell
-
-
-# def test_capture_registered_calls():
-#     mock_info = MockInfo()
-#     mock_info.raw_cell = """
-# intake.open_esm_datastore("dud_filename")
-# esm_datastore.search(name='xyz')
-#     """
-
-#     capture_registered_calls(mock_info)
 
 
 def test_ast_instance_method():
@@ -440,3 +430,49 @@ intake.cat.access_nri
     assert visitor._caught_calls == {
         "intake.cat.access_nri",
     }
+
+
+def test_match_ipython_magic():
+    """
+    This test is to check that the IPython magic commands are not caught by the
+    CallListener. This is important because we don't want to send telemetry for
+    IPython magic commands.
+    """
+    mock_info = MockInfo()
+    mock_info.raw_cell = r"""
+!ls
+%%timeit
+class MyClass:
+    @classmethod
+    def class_func(cls):
+        self.set_var = set()
+
+    def uncaught_func(self, *args, **kwargs):
+        pass
+
+MyClass.func(instance)
+
+MyClass.func??
+    """
+
+    python_code = r"""
+class MyClass:
+    @classmethod
+    def class_func(cls):
+        self.set_var = set()
+
+    def uncaught_func(self, *args, **kwargs):
+        pass
+
+MyClass.func(instance)
+
+    """
+
+    parsed_w_magic = strip_magic(mock_info.raw_cell)
+    parsed_wo_magic = strip_magic(python_code)
+
+    assert parsed_w_magic == parsed_wo_magic
+
+    a = ast.dump(ast.parse(parsed_w_magic), annotate_fields=False)
+    b = ast.dump(ast.parse(parsed_wo_magic), annotate_fields=False)
+    assert a == b

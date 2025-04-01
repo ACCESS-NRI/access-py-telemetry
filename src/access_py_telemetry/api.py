@@ -460,7 +460,6 @@ async def send_telemetry(
                 warnings.warn(
                     f"Request failed: {e}", category=RuntimeWarning, stacklevel=2
                 )
-            pass
     return None
 
 

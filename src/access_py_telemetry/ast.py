@@ -44,13 +44,6 @@ def strip_magic(code: str) -> str:
     return code
 
 
-def try_parse_ast(code: str) -> ast.AST | None:
-    try:
-        return ast.parse(code)
-    except (SyntaxError, IndentationError):
-        return None
-
-
 def capture_registered_calls(info: ExecutionInfo) -> None:
     """
     Use the AST module to parse the code that we are executing & send an API call
@@ -74,8 +67,9 @@ def capture_registered_calls(info: ExecutionInfo) -> None:
 
     code = strip_magic(code)
 
-    tree = try_parse_ast(code)
-    if tree is None:
+    try:
+        tree = ast.parse(code)
+    except (SyntaxError, IndentationError):
         return None
 
     user_namespace: dict[str, Any] = get_ipython().user_ns  # type: ignore

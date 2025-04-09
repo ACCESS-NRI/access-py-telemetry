@@ -16,8 +16,11 @@ import re
 import yaml
 import multiprocessing
 from pathlib import Path, PurePosixPath
+import logging
 
 from .utils import ENDPOINTS
+
+logging.getLogger("httpx").setLevel(logging.WARNING)
 
 if sys.version_info >= (3, 11):
     from typing import Self

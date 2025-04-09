@@ -35,7 +35,7 @@ def strip_magic(code: str) -> str:
 
     """
 
-    IPYTHON_MAGIC_PATTERN = r"^\s*[%!?]{1,2}|^.*\?\?$"
+    IPYTHON_MAGIC_PATTERN = r"^\s*[%!?]{1,2}|^.*\?{1,2}$"
 
     code = "\n".join(
         line for line in code.splitlines() if not re.match(IPYTHON_MAGIC_PATTERN, line)
@@ -48,6 +48,8 @@ def capture_registered_calls(info: ExecutionInfo) -> None:
     """
     Use the AST module to parse the code that we are executing & send an API call
     if we detect specific function or method calls.
+
+    Fail silently if we can't parse the code.
 
     Parameters
     ----------
@@ -65,7 +67,10 @@ def capture_registered_calls(info: ExecutionInfo) -> None:
 
     code = strip_magic(code)
 
-    tree = ast.parse(code)
+    try:
+        tree = ast.parse(code)
+    except (SyntaxError, IndentationError):
+        return None
 
     user_namespace: dict[str, Any] = get_ipython().user_ns  # type: ignore
 

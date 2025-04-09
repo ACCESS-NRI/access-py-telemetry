@@ -453,6 +453,8 @@ class MyClass:
 MyClass.func(instance)
 
 MyClass.func??
+
+MyClass.func?
     """
 
     python_code = r"""
@@ -465,6 +467,7 @@ class MyClass:
         pass
 
 MyClass.func(instance)
+
 
     """
 

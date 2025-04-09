@@ -6,7 +6,7 @@
 import ast
 import sys
 import pytest
-from access_py_telemetry.ast import CallListener, strip_magic
+from access_py_telemetry.ast import CallListener, strip_magic, capture_registered_calls
 from unittest.mock import MagicMock
 
 
@@ -479,3 +479,43 @@ MyClass.func(instance)
     a = ast.dump(ast.parse(parsed_w_magic), annotate_fields=False)
     b = ast.dump(ast.parse(parsed_wo_magic), annotate_fields=False)
     assert a == b
+
+
+def test_parse_invalid_code():
+    mock_info = MockInfo()
+    mock_info.raw_cell = """
+class MyClass:
+    def func(self):
+        self.set_var = set()
+
+    def uncaught_func(self, *args, **kwargs):
+        pass
+
+instance = MyClass()
+mycall = instance.func()
+
+    instance.uncaught_func()
+
+
+"""
+
+    capture_registered_calls(mock_info)
+
+    mock_info = MockInfo()
+    mock_info.raw_cell = """
+class MyClass:
+    def func(self):
+        self.set_var = set()
+
+    def uncaught_func(self, *args, **kwargs):
+        pass
+
+@instance = MyClass()
+1mycall = instance.func()
+
+    instance.uncaught_func()
+
+
+"""
+
+    capture_registered_calls(mock_info)

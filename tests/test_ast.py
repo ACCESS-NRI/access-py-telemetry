@@ -519,3 +519,32 @@ class MyClass:
 """
 
     capture_registered_calls(mock_info)
+
+
+def test_implicit_boolean_conversion():
+    mock_info = MockInfo()
+    mock_info.raw_cell = """
+
+import numpy as np
+
+arr = np.array([0, 2, 3])
+
+arr.mean()
+
+"""
+
+    f = sys._getframe()
+    exec(mock_info.raw_cell, globals(), f.f_locals)
+    mock_user_ns = f.f_locals
+
+    mock_registry = {"mock": ["ndarray.mean"]}
+
+    mock_api_handler = MagicMock()
+
+    tree = ast.parse(mock_info.raw_cell)
+
+    visitor = CallListener(mock_user_ns, mock_registry, mock_api_handler)
+
+    visitor.visit(tree)
+
+    assert visitor._caught_calls == {"ndarray.mean"}

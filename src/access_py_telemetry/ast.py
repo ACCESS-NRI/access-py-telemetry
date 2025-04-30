@@ -74,8 +74,13 @@ def capture_registered_calls(info: ExecutionInfo) -> None:
 
     user_namespace: dict[str, Any] = get_ipython().user_ns  # type: ignore
 
-    visitor = CallListener(user_namespace, REGISTRIES, api_handler)
-    visitor.visit(tree)
+    try:
+        visitor = CallListener(user_namespace, REGISTRIES, api_handler)
+        visitor.visit(tree)
+    except Exception:
+        # Catch all exceptions to avoid breaking the execution
+        # of the code being run.
+        return None
 
     return None
 
@@ -132,7 +137,7 @@ class CallListener(ast.NodeVisitor):
             else:
                 # Check if the first part is in the user namespace
                 instance = self.user_namespace.get(parts[0])
-                if not instance:
+                if instance is None:
                     self.generic_visit(node)
                     return None
 
@@ -169,7 +174,7 @@ class CallListener(ast.NodeVisitor):
         if full_name:
             parts = full_name.split(".")
             instance = self.user_namespace.get(parts[0])
-            if not instance:
+            if instance is None:
                 return None
 
             class_name = type(instance).__name__

@@ -185,11 +185,6 @@ class CallListener(ast.NodeVisitor):
         else:
             args = ast.unparse(node.slice)
 
-        if isinstance(node.slice, ast.Name):
-            args = self.user_namespace.get(node.slice.id, None)
-        else:
-            args = ast.unparse(node.slice)
-
         if func_name:
             for registry, registered_funcs in self.registries.items():
                 if func_name in registered_funcs:

@@ -132,20 +132,44 @@ class CallListener(ast.NodeVisitor):
         if full_name:
             parts = full_name.split(".")
             if len(parts) == 1:
-                # Regular function call
                 func_name = f"{full_name}"
             else:
-                # Check if the first part is in the user namespace
                 instance = self.user_namespace.get(parts[0])
-                if instance is None:
-                    self.generic_visit(node)
-                    return None
-
-                class_name = type(instance).__name__
-                if class_name != "module":
-                    func_name = f"{class_name}.{'.'.join(parts[1:])}"
+                if instance is not None:
+                    class_name = type(instance).__name__
+                    if class_name != "module":
+                        func_name = f"{class_name}.{'.'.join(parts[1:])}"
+                    else:
+                        func_name = f"{instance.__name__}.{'.'.join(parts[1:])}"
                 else:
-                    func_name = f"{instance.__name__}.{'.'.join(parts[1:])}"
+                    # Handle chained calls: c.ret_self_func().func()
+                    if isinstance(node.func, ast.Attribute) and isinstance(
+                        node.func.value, ast.Call
+                    ):
+                        inner_call = node.func.value
+                        # Special case: MyClass().func()
+                        if isinstance(inner_call.func, ast.Name):
+                            class_name = inner_call.func.id
+                            method_name = node.func.attr
+                            func_name = f"{class_name}.{method_name}"
+                        else:
+                            # Fallback to previous logic for chained calls
+                            inner_func_name = self._get_full_name(inner_call.func)
+                            if inner_func_name:
+                                inner_parts = inner_func_name.split(".")
+                                inner_instance = self.user_namespace.get(inner_parts[0])
+                                if inner_instance is not None:
+                                    class_name = type(inner_instance).__name__
+                                else:
+                                    class_name = inner_func_name
+                                method_name = node.func.attr
+                                func_name = f"{class_name}.{method_name}"
+                            else:
+                                self.generic_visit(node)
+                                return None
+                    else:
+                        self.generic_visit(node)
+                        return None
 
         args = [self.safe_eval(arg) for arg in node.args]
         kwargs = {

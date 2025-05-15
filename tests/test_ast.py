@@ -176,17 +176,56 @@ unregistered_func()
     assert "uncaught_func" not in visitor._caught_calls
 
 
-@pytest.mark.xfail
+def test_ast_chained_calls():
+    """
+    Need to figure out how to catch the instantiation of a class and then call a method
+    on it.
+    """
+    mock_info = MockInfo()
+    mock_info.raw_cell = """
+class MyClass:
+
+    def ret_self_func(self):
+        return self
+
+
+    def func(self):
+        self.set_var = set()
+
+c = MyClass()
+c.ret_self_func().func()
+
+
+"""
+
+    f = sys._getframe()
+    exec(mock_info.raw_cell, globals(), f.f_locals)
+    mock_user_ns = f.f_locals
+
+    mock_registry = {"mock": ["MyClass.func", "MyClass.ret_self_func"]}
+
+    mock_api_handler = MagicMock()
+
+    tree = ast.parse(mock_info.raw_cell)
+
+    visitor = CallListener(mock_user_ns, mock_registry, mock_api_handler)
+
+    visitor.visit(tree)
+
+    assert visitor._caught_calls == {"MyClass.func", "MyClass.ret_self_func"}
+
+
 def test_ast_instantiate_and_call():
     """
     Need to figure out how to catch the instantiation of a class and then call a method
-    on it. Not needed yet
+    on it.
     """
     mock_info = MockInfo()
     mock_info.raw_cell = """
 class MyClass:
     def func(self):
         self.set_var = set()
+
 
 
 MyClass().func()

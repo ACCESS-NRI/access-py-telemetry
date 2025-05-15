@@ -346,6 +346,73 @@ operating_system.path.join("some","paths")
     }
 
 
+@pytest.mark.parametrize(
+    "raw_cell, called_with",
+    [
+        (
+            """
+class MyClass:
+    def func(self):
+        self.set_var = set()
+
+    def __getitem__(self, key):
+        return [1, 2, 3]
+
+instance = MyClass()
+
+search_str = 'some_item'
+
+mycall = instance[search_str] 
+""",
+            ("mock", "MyClass.__getitem__", ["some_item"], {}),
+        ),
+        (
+            """
+class MyClass:
+    def func(self):
+        self.set_var = set()
+
+    def __getitem__(self, key):
+        return [1, 2, 3]
+
+instance = MyClass()
+
+mycall = instance['directly_used_string'] 
+""",
+            ("mock", "MyClass.__getitem__", ["'directly_used_string'"], {}),
+        ),
+    ],
+)
+def test_ast_aliased_index(raw_cell, called_with):
+    """
+    We need to make sure that we properly catch, eg.
+    ```python
+    experiment_name = 'my_expt'
+    esm_ds = catalog[experiment_name]
+    ```
+    and record the call to catalog.__getitem_ with an argument of 'my_expt'
+    rather than the string identifier of the variable holding it, `experiment_name`
+    """
+
+    mock_info = MockInfo()
+    mock_info.raw_cell = raw_cell
+    f = sys._getframe()
+    exec(mock_info.raw_cell, globals(), f.f_locals)
+    mock_user_ns = f.f_locals
+
+    mock_registry = {"mock": ["MyClass.__getitem__", "list.__getitem__"]}
+
+    mock_api_handler = MagicMock()
+
+    tree = ast.parse(mock_info.raw_cell)
+
+    visitor = CallListener(mock_user_ns, mock_registry, mock_api_handler)
+
+    visitor.visit(tree)
+
+    mock_api_handler.send_api_request.assert_called_once_with(*called_with)
+
+
 def test_import_catalog():
     mock_info = MockInfo()
     mock_info.raw_cell = """

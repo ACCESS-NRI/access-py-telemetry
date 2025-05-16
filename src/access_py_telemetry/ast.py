@@ -113,7 +113,6 @@ class CallListener(ast.NodeVisitor):
             return ast.unparse(node)
 
     def visit_Attribute(self, node: ast.Attribute) -> None:
-        """Handle attribute access."""
         if full_name := self._get_full_name(node):
             self._process_api_call(full_name, [], {})
 
@@ -210,7 +209,9 @@ class CallListener(ast.NodeVisitor):
         if inner_instance is not None:
             class_name = type(inner_instance).__name__
         else:
-            class_name = inner_func_name
+            # Extract just the class name from the full path
+            # For "MyClass.get_instance", we want "MyClass"
+            class_name = inner_parts[0]  # Just take the first part as the class name
 
         method_name = node.func.attr
         return f"{class_name}.{method_name}"

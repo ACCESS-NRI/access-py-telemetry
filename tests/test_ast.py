@@ -176,17 +176,188 @@ unregistered_func()
     assert "uncaught_func" not in visitor._caught_calls
 
 
+def test_ast_chained_calls():
+    """
+    Need to figure out how to catch the instantiation of a class and then call a method
+    on it.
+    """
+    mock_info = MockInfo()
+    mock_info.raw_cell = """
+class MyClass:
+
+    def ret_self_func(self, arg1=None, arg2=None):
+        return self
+
+
+    def func(self, a = None, b = None):
+        self.set_var = set()
+
+c = MyClass()
+c.ret_self_func(0,arg2=1).func('a', b='b')
+
+
+"""
+
+    f = sys._getframe()
+    exec(mock_info.raw_cell, globals(), f.f_locals)
+    mock_user_ns = f.f_locals
+
+    mock_registry = {"mock": ["MyClass.func", "MyClass.ret_self_func"]}
+
+    mock_api_handler = MagicMock()
+
+    tree = ast.parse(mock_info.raw_cell)
+
+    visitor = CallListener(mock_user_ns, mock_registry, mock_api_handler)
+
+    visitor.visit(tree)
+
+    assert visitor._caught_calls == {"MyClass.func", "MyClass.ret_self_func"}
+
+    assert len(mock_api_handler.method_calls) == 2
+    assert mock_api_handler.method_calls[0].args == (
+        "mock",
+        "MyClass.ret_self_func",
+        [0],
+        {"arg2": 1},
+    )
+    assert mock_api_handler.method_calls[1].args == (
+        "mock",
+        "MyClass.func",
+        ["a"],
+        {"b": "b"},
+    )
+
+
+def test_ast_chained_calls_2():
+    """
+    Need to figure out how to catch the instantiation of a class and then call a method
+    on it.
+    """
+    mock_info = MockInfo()
+    mock_info.raw_cell = """
+class MyClass:
+
+    def ret_self_func(self, arg1=None, arg2=None):
+        return self
+
+    def func(self, a = None, b = None):
+        self.set_var = set()
+    
+        
+c = MyClass()
+c.ret_self_func(0,arg2=1).ret_self_func(arg1=0, arg2=1).func('a', b='b')
+
+
+"""
+
+    f = sys._getframe()
+    exec(mock_info.raw_cell, globals(), f.f_locals)
+    mock_user_ns = f.f_locals
+
+    mock_registry = {"mock": ["MyClass.func", "MyClass.ret_self_func"]}
+
+    mock_api_handler = MagicMock()
+
+    tree = ast.parse(mock_info.raw_cell)
+
+    visitor = CallListener(mock_user_ns, mock_registry, mock_api_handler)
+
+    visitor.visit(tree)
+
+    assert visitor._caught_calls == {"MyClass.func", "MyClass.ret_self_func"}
+
+    assert len(mock_api_handler.method_calls) == 3
+    assert mock_api_handler.method_calls[0].args == (
+        "mock",
+        "MyClass.ret_self_func",
+        [0],
+        {"arg2": 1},
+    )
+    assert mock_api_handler.method_calls[1].args == (
+        "mock",
+        "MyClass.ret_self_func",
+        [],
+        {"arg1": 0, "arg2": 1},
+    )
+    assert mock_api_handler.method_calls[2].args == (
+        "mock",
+        "MyClass.func",
+        ["a"],
+        {"b": "b"},
+    )
+
+
 @pytest.mark.xfail
+def test_ast_chained_call_with_unknown_first_part():
+    """
+    Test chained call resolution when the first part of the chain isn't in user namespace.
+    This specifically tests the fallback where class_name = inner_func_name.
+    """
+    mock_info = MockInfo()
+    mock_info.raw_cell = """
+class MyClass:
+    @classmethod
+    def get_instance(cls):
+        return cls()
+
+    def method1(self):
+        return self
+
+    def method2(self):
+        return "result"
+
+# Chain call with an object not directly in the namespace
+MyClass.get_instance().method1().method2()
+"""
+
+    f = sys._getframe()
+    exec(mock_info.raw_cell, globals(), f.f_locals)
+    mock_user_ns = f.f_locals
+
+    # Register all the methods we want to track
+    mock_registry = {
+        "mock": ["MyClass.method1", "MyClass.method2", "MyClass.get_instance"]
+    }
+
+    mock_api_handler = MagicMock()
+    tree = ast.parse(mock_info.raw_cell)
+    visitor = CallListener(mock_user_ns, mock_registry, mock_api_handler)
+    visitor.visit(tree)
+
+    # Verify all method calls were caught
+    assert visitor._caught_calls == {
+        "MyClass.method1",
+        "MyClass.method2",
+        "MyClass.get_instance",
+    }
+
+    # Verify the order and arguments of the calls
+    assert len(mock_api_handler.method_calls) == 3
+
+    # First call should be to get_instance (execution order would be right-to-left)
+    assert mock_api_handler.method_calls[0].args[1] == "MyClass.get_instance"
+
+    # Second call should be to method1
+    # Here we're specifically testing the fallback case where class_name = inner_func_name
+    # Because MyClass.get_instance() returns an object not in the namespace
+    assert mock_api_handler.method_calls[1].args[1] == "MyClass.method1"
+
+    # Third call should be to method2
+    assert mock_api_handler.method_calls[2].args[1] == "MyClass.method2"
+
+
 def test_ast_instantiate_and_call():
     """
     Need to figure out how to catch the instantiation of a class and then call a method
-    on it. Not needed yet
+    on it.
     """
     mock_info = MockInfo()
     mock_info.raw_cell = """
 class MyClass:
     def func(self):
         self.set_var = set()
+
 
 
 MyClass().func()
@@ -212,7 +383,6 @@ MyClass().func()
     }
 
 
-@pytest.mark.xfail
 def test_ast_class_method():
     """
     Class methods don't work with the CallListener yet
@@ -222,13 +392,13 @@ def test_ast_class_method():
 class MyClass:
     @classmethod
     def class_func(cls):
-        self.set_var = set()
+        cls.set_var = set()
 
     def uncaught_func(self, *args, **kwargs):
         pass
 
 
-MyClass.func(instance)
+MyClass.class_func()
 
 """
 

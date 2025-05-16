@@ -274,13 +274,13 @@ c.ret_self_func(0,arg2=1).ret_self_func(arg1=0, arg2=1).func('a', b='b')
         [0],
         {"arg2": 1},
     )
-    assert mock_api_handler.method_calls[2].args == (
+    assert mock_api_handler.method_calls[1].args == (
         "mock",
         "MyClass.ret_self_func",
         [],
         {"arg1": 0, "arg2": 1},
     )
-    assert mock_api_handler.method_calls[1].args == (
+    assert mock_api_handler.method_calls[2].args == (
         "mock",
         "MyClass.func",
         ["a"],

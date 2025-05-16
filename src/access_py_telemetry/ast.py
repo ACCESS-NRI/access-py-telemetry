@@ -197,6 +197,8 @@ class CallListener(ast.NodeVisitor):
             and isinstance(node.func.value, ast.Call)
             and not isinstance(node.func.value.func, ast.Name)
         ):
+            # What does this voodoo mean?
+
             return None
 
         inner_call = node.func.value

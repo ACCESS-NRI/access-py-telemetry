@@ -185,15 +185,15 @@ def test_ast_chained_calls():
     mock_info.raw_cell = """
 class MyClass:
 
-    def ret_self_func(self):
+    def ret_self_func(self, arg1=None, arg2=None):
         return self
 
 
-    def func(self):
+    def func(self, a = None, b = None):
         self.set_var = set()
 
 c = MyClass()
-c.ret_self_func().func()
+c.ret_self_func(0,arg2=1).func('a', b='b')
 
 
 """
@@ -213,6 +213,20 @@ c.ret_self_func().func()
     visitor.visit(tree)
 
     assert visitor._caught_calls == {"MyClass.func", "MyClass.ret_self_func"}
+
+    assert len(mock_api_handler.method_calls) == 2
+    assert mock_api_handler.method_calls[0].args == (
+        "mock",
+        "MyClass.ret_self_func",
+        [0],
+        {"arg2": 1},
+    )
+    assert mock_api_handler.method_calls[1].args == (
+        "mock",
+        "MyClass.func",
+        ["a"],
+        {"b": "b"},
+    )
 
 
 def test_ast_instantiate_and_call():

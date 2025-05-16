@@ -113,63 +113,22 @@ class CallListener(ast.NodeVisitor):
             return ast.unparse(node)
 
     def visit_Attribute(self, node: ast.Attribute) -> None:
-        full_name = self._get_full_name(node)
-        for registry, registered_funcs in self.registries.items():
-            if full_name in registered_funcs:
-                self.api_handler.send_api_request(
-                    registry,
-                    function_name=full_name,
-                    args=[],
-                    kwargs={},
-                )
-                self._caught_calls |= {full_name}
+        """Handle attribute access."""
+        if full_name := self._get_full_name(node):
+            self._process_api_call(full_name, [], {})
 
         self.generic_visit(node)
 
     def visit_Call(self, node: ast.Call) -> None:
-        full_name = self._get_full_name(node.func)
-        func_name = None
-        if full_name:
-            parts = full_name.split(".")
-            if len(parts) == 1:
-                func_name = f"{full_name}"
-            else:
-                instance = self.user_namespace.get(parts[0])
-                if instance is not None:
-                    class_name = type(instance).__name__
-                    if class_name != "module":
-                        func_name = f"{class_name}.{'.'.join(parts[1:])}"
-                    else:
-                        func_name = f"{instance.__name__}.{'.'.join(parts[1:])}"
-                else:
-                    # Handle chained calls: c.ret_self_func().func()
-                    if isinstance(node.func, ast.Attribute) and isinstance(
-                        node.func.value, ast.Call
-                    ):
-                        inner_call = node.func.value
-                        # Special case: MyClass().func()
-                        if isinstance(inner_call.func, ast.Name):
-                            class_name = inner_call.func.id
-                            method_name = node.func.attr
-                            func_name = f"{class_name}.{method_name}"
-                        else:
-                            # Fallback to previous logic for chained calls
-                            inner_func_name = self._get_full_name(inner_call.func)
-                            if inner_func_name:
-                                inner_parts = inner_func_name.split(".")
-                                inner_instance = self.user_namespace.get(inner_parts[0])
-                                if inner_instance is not None:
-                                    class_name = type(inner_instance).__name__
-                                else:
-                                    class_name = inner_func_name
-                                method_name = node.func.attr
-                                func_name = f"{class_name}.{method_name}"
-                            else:
-                                self.generic_visit(node)
-                                return None
-                    else:
-                        self.generic_visit(node)
-                        return None
+        """Handle function and method calls."""
+
+        # This seems weird but it reverses our order of operations, meaning we
+        # catch chained function calls in the order they are called.
+        self.generic_visit(node)
+
+        # If we can't resolve a function name, just visit children and return
+        if not (func_name := self._resolve_function_name(node)):
+            return None
 
         args = [self.safe_eval(arg) for arg in node.args]
         kwargs = {
@@ -178,24 +137,103 @@ class CallListener(ast.NodeVisitor):
             if kw.arg is not None
         }
 
-        if func_name:
-            for registry, registered_funcs in self.registries.items():
-                if func_name in registered_funcs:
-                    self.api_handler.send_api_request(
-                        registry,
-                        func_name,
-                        args,
-                        kwargs,
-                    )
-                    self._caught_calls |= {func_name}
+        self._process_api_call(func_name, args, kwargs)
 
-        self.generic_visit(node)
+    def _resolve_function_name(self, node: ast.Call) -> str | None:
+        """Resolve a function name using various strategies."""
+        if not (full_name := self._get_full_name(node.func)):
+            return None
+
+        if func_name := self._resolve_bare_function(full_name):
+            return func_name
+
+        if func_name := self._resolve_from_namespace(full_name):
+            return func_name
+
+        if func_name := self._resolve_inline_instantiation(node):
+            return func_name
+
+        # Finally check for chained calls
+        if func_name := self._resolve_chained_call(node):
+            return func_name
+
+        return None
+
+    def _resolve_bare_function(self, full_name: str) -> str | None:
+        """Resolve a simple function name (e.g., 'func')."""
+        if "." not in full_name:
+            return full_name
+        return None
+
+    def _resolve_from_namespace(self, full_name: str) -> str | None:
+        """Resolve function from user namespace (e.g., 'instance.method', 'module.func')."""
+        parts = full_name.split(".")
+        instance = self.user_namespace.get(parts[0])
+        if instance is None:
+            return None
+
+        class_name = type(instance).__name__
+        if class_name != "module":
+            return f"{class_name}.{'.'.join(parts[1:])}"
+        else:
+            return f"{instance.__name__}.{'.'.join(parts[1:])}"
+
+    def _resolve_inline_instantiation(self, node: ast.Call) -> str | None:
+        """Resolve direct class instantiation and method call (e.g., 'MyClass().method')."""
+        if not (
+            isinstance(node.func, ast.Attribute)
+            and isinstance(node.func.value, ast.Call)
+            and isinstance(node.func.value.func, ast.Name)
+        ):
+            return None
+
+        class_name = node.func.value.func.id
+        method_name = node.func.attr
+        return f"{class_name}.{method_name}"
+
+    def _resolve_chained_call(self, node: ast.Call) -> str | None:
+        """Resolve chained method calls (e.g., 'obj.method1().method2()')."""
+        if not (
+            isinstance(node.func, ast.Attribute)
+            and isinstance(node.func.value, ast.Call)
+            and not isinstance(node.func.value.func, ast.Name)
+        ):
+            return None
+
+        inner_call = node.func.value
+        inner_func_name = self._get_full_name(inner_call.func)
+        if not inner_func_name:
+            return None
+
+        inner_parts = inner_func_name.split(".")
+        inner_instance = self.user_namespace.get(inner_parts[0])
+        if inner_instance is not None:
+            class_name = type(inner_instance).__name__
+        else:
+            class_name = inner_func_name
+
+        method_name = node.func.attr
+        return f"{class_name}.{method_name}"
+
+    def _process_api_call(
+        self, func_name: str, args: list[Any], kwargs: dict[str, Any]
+    ) -> None:
+        """Process an API call for a matched function name."""
+        for registry, registered_funcs in self.registries.items():
+            if func_name in registered_funcs:
+                self.api_handler.send_api_request(
+                    registry,
+                    func_name,
+                    args,
+                    kwargs,
+                )
+                self._caught_calls |= {func_name}
 
     def visit_Subscript(self, node: ast.Subscript) -> None:
         """Handle subscript operations."""
-        full_name = self._get_full_name(node.value)  # Get the object being indexed
         func_name = None
-        if full_name:
+
+        if full_name := self._get_full_name(node.value):  # Get the object being indexed
             parts = full_name.split(".")
             instance = self.user_namespace.get(parts[0])
             if instance is None:
@@ -210,14 +248,6 @@ class CallListener(ast.NodeVisitor):
             args = ast.unparse(node.slice)
 
         if func_name:
-            for registry, registered_funcs in self.registries.items():
-                if func_name in registered_funcs:
-                    self.api_handler.send_api_request(
-                        registry,
-                        func_name,
-                        [args],
-                        {},
-                    )
-                    self._caught_calls |= {func_name}
+            self._process_api_call(func_name, [args], {})
 
         self.generic_visit(node)

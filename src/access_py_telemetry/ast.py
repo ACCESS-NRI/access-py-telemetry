@@ -113,16 +113,8 @@ class CallListener(ast.NodeVisitor):
             return ast.unparse(node)
 
     def visit_Attribute(self, node: ast.Attribute) -> None:
-        full_name = self._get_full_name(node)
-        for registry, registered_funcs in self.registries.items():
-            if full_name in registered_funcs:
-                self.api_handler.send_api_request(
-                    registry,
-                    function_name=full_name,
-                    args=[],
-                    kwargs={},
-                )
-                self._caught_calls |= {full_name}
+        if full_name := self._get_full_name(node):
+            self._process_api_call(full_name, [], {})
 
         self.generic_visit(node)
 
@@ -155,15 +147,7 @@ class CallListener(ast.NodeVisitor):
         }
 
         if func_name:
-            for registry, registered_funcs in self.registries.items():
-                if func_name in registered_funcs:
-                    self.api_handler.send_api_request(
-                        registry,
-                        func_name,
-                        args,
-                        kwargs,
-                    )
-                    self._caught_calls |= {func_name}
+            self._process_api_call(func_name, args, kwargs)
 
         self.generic_visit(node)
 
@@ -186,14 +170,20 @@ class CallListener(ast.NodeVisitor):
             args = ast.unparse(node.slice)
 
         if func_name:
-            for registry, registered_funcs in self.registries.items():
-                if func_name in registered_funcs:
-                    self.api_handler.send_api_request(
-                        registry,
-                        func_name,
-                        [args],
-                        {},
-                    )
-                    self._caught_calls |= {func_name}
+            self._process_api_call(func_name, [args], {})
 
         self.generic_visit(node)
+
+    def _process_api_call(
+        self, func_name: str, args: list[Any], kwargs: dict[str, Any]
+    ) -> None:
+        """Process an API call for a matched function name."""
+        for registry, registered_funcs in self.registries.items():
+            if func_name in registered_funcs:
+                self.api_handler.send_api_request(
+                    registry,
+                    func_name,
+                    args,
+                    kwargs,
+                )
+                self._caught_calls |= {func_name}

@@ -205,8 +205,8 @@ class CallListener(ast.NodeVisitor):
         if isinstance(node, ast.Name):
             return node.id
 
-        # Something like this could help us resolved functions stored in variables:
         """
+        # Something like this could help us resolved functions stored in variables:
         if f := self.user_namespace.get(node.id):
             # If the node is a name in the user namespace, return it
             return f.__name__

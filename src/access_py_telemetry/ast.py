@@ -306,20 +306,6 @@ class CallListener(ast.NodeVisitor):
         method_name = node.func.attr
         return f"{class_name}.{method_name}"
 
-    def _process_api_call(
-        self, func_name: str, args: list[Any], kwargs: dict[str, Any]
-    ) -> None:
-        """Process an API call for a matched function name."""
-        for registry, registered_funcs in self.registries.items():
-            if func_name in registered_funcs:
-                self.api_handler.send_api_request(
-                    registry,
-                    func_name,
-                    args,
-                    kwargs,
-                )
-                self._caught_calls |= {func_name}
-
     def visit_Subscript(self, node: ast.Subscript) -> None:
         """Handle subscript operations."""
         func_name = None
@@ -342,3 +328,17 @@ class CallListener(ast.NodeVisitor):
             self._process_api_call(func_name, [args], {})
 
         self.generic_visit(node)
+
+    def _process_api_call(
+        self, func_name: str, args: list[Any], kwargs: dict[str, Any]
+    ) -> None:
+        """Process an API call for a matched function name."""
+        for registry, registered_funcs in self.registries.items():
+            if func_name in registered_funcs:
+                self.api_handler.send_api_request(
+                    registry,
+                    func_name,
+                    args,
+                    kwargs,
+                )
+                self._caught_calls |= {func_name}

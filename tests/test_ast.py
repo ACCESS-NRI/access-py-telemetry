@@ -132,7 +132,7 @@ registered_func2(pd.DataFrame())
     assert "uncaught_func" not in visitor._caught_calls
 
 
-@pytest.mark.xfail
+# @pytest.mark.xfail
 def test_ast_aliased_function():
     """
     This will require more sophisticated analysis to catch aliased functions. Maybe
@@ -286,6 +286,72 @@ c.ret_self_func(0,arg2=1).ret_self_func(arg1=0, arg2=1).func('a', b='b')
         ["a"],
         {"b": "b"},
     )
+
+
+def test_ast_chained_calls_3():
+    """
+    Need to figure out how to catch the instantiation of a class and then call a method
+    on it.
+    """
+    mock_info = MockInfo()
+    mock_info.raw_cell = """
+class MyClass:
+
+    def ret_self_func(self, arg1=None, arg2=None):
+        return self
+
+    def func(self, a = None, b = None):
+        self.set_var = set()
+    
+        
+c = MyClass()
+c.ret_self_func(0,arg2=1).ret_self_func(arg1=0, arg2=1).func('a', b='b')
+
+c.ret_self_func(0,arg2=1).ret_self_func(arg1=0, arg2=1).func('a', b='b')
+
+"""
+
+    f = sys._getframe()
+    exec(mock_info.raw_cell, globals(), f.f_locals)
+    mock_user_ns = f.f_locals
+
+    mock_registry = {"mock": ["MyClass.func", "MyClass.ret_self_func"]}
+
+    mock_api_handler = MagicMock()
+
+    tree = ast.parse(mock_info.raw_cell)
+
+    visitor = CallListener(mock_user_ns, mock_registry, mock_api_handler)
+
+    visitor.visit(tree)
+
+    assert visitor._caught_calls == {"MyClass.func", "MyClass.ret_self_func"}
+
+    assert len(mock_api_handler.method_calls) == 6
+    assert mock_api_handler.method_calls[0].args == (
+        "mock",
+        "MyClass.ret_self_func",
+        [0],
+        {"arg2": 1},
+    )
+    assert mock_api_handler.method_calls[1].args == (
+        "mock",
+        "MyClass.ret_self_func",
+        [],
+        {"arg1": 0, "arg2": 1},
+    )
+    assert mock_api_handler.method_calls[2].args == (
+        "mock",
+        "MyClass.func",
+        ["a"],
+        {"b": "b"},
+    )
+
+    for i in range(0, 3):
+        assert (
+            mock_api_handler.method_calls[i + 3].args
+            == mock_api_handler.method_calls[i].args
+        )
 
 
 @pytest.mark.xfail

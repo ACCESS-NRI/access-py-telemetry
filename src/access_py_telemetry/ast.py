@@ -98,21 +98,6 @@ class CallListener(ast.NodeVisitor):
         self.api_handler = api_handler
         self._processed_calls: set[int] = set()  # Track already processed call nodes
 
-    def _get_full_name(self, node: ast.AST) -> str | None:
-        """Recursively get the full name of a function or method call."""
-        if isinstance(node, ast.Attribute):
-            return f"{self._get_full_name(node.value)}.{node.attr}"
-        elif isinstance(node, ast.Name):
-            return node.id
-        return None
-
-    def safe_eval(self, node: ast.AST) -> Any:
-        """Try to evaluate a node, or return the unparsed node if that fails."""
-        try:
-            return ast.literal_eval(node)
-        except (ValueError, SyntaxError):
-            return ast.unparse(node)
-
     def visit_Attribute(self, node: ast.Attribute) -> None:
         if full_name := self._get_full_name(node):
             self._process_api_call(full_name, [], {})
@@ -120,18 +105,18 @@ class CallListener(ast.NodeVisitor):
         self.generic_visit(node)
 
     def visit_Expr(self, node: ast.Expr) -> None:
-        """Process expression statements, which helps with method chaining.
+        """Process expression statements - we use these to catch chained calls.
 
-        This is particularly useful for capturing multi-level method chains
-        like obj.method1().method2().method3() where we want to track each call.
+        Catches expressions like `c.method1().method2().method3()`, and sends a
+        telemetry call for each method in the chain, in the order they are called.
+
         """
         # If this is a chained method call expression (what we're looking for)
         if isinstance(node.value, ast.Call):
-            # Extract all calls in the chain from innermost (first) to outermost (last)
-            calls_in_chain = self._extract_call_chain(node.value)
+            call_chain = self._extract_call_chain(node.value)
 
             # Process each call in order of execution (inside out)
-            for call_node in calls_in_chain:
+            for call_node in call_chain:
                 # Mark it so we don't process it twice when visit_Call sees it
                 self._processed_calls.add(id(call_node))
 
@@ -149,32 +134,6 @@ class CallListener(ast.NodeVisitor):
 
         # Continue with normal AST traversal
         self.generic_visit(node)
-
-    def _extract_call_chain(self, node: ast.Call) -> list[ast.Call]:
-        """Extract all calls in a chained method call, from outermost to innermost, then reverse.
-
-        For a chain like c.method1().method2().method3(), this returns the calls in execution order:
-        [c.method1(), method1().method2(), method2().method3()]
-
-        This ensures we capture all method calls in a chain in the correct execution order.
-        """
-        calls = []
-        current = node
-
-        # First collect calls from outermost to innermost
-        while True:
-            calls.append(current)
-
-            # If the function is an attribute access on another call, move deeper
-            if isinstance(current.func, ast.Attribute) and isinstance(
-                current.func.value, ast.Call
-            ):
-                current = current.func.value
-            else:
-                break
-
-        # Reverse to get execution order (from innermost to outermost)
-        return list(reversed(calls))
 
     def visit_Call(self, node: ast.Call) -> None:
         """Handle function and method calls."""
@@ -198,8 +157,97 @@ class CallListener(ast.NodeVisitor):
 
         self._process_api_call(func_name, args, kwargs)
 
+    def visit_Subscript(self, node: ast.Subscript) -> None:
+        """Handle subscript operations."""
+        func_name = None
+
+        if full_name := self._get_full_name(node.value):  # Get the object being indexed
+            parts = full_name.split(".")
+            instance = self.user_namespace.get(parts[0])
+            if instance is None:
+                return None
+
+            class_name = type(instance).__name__
+            func_name = f"{class_name}.{'.'.join(parts[1:])}__getitem__"
+
+        if isinstance(node.slice, ast.Name):
+            args = self.user_namespace.get(node.slice.id, None)
+        else:
+            args = ast.unparse(node.slice)
+
+        if func_name:
+            self._process_api_call(func_name, [args], {})
+
+        self.generic_visit(node)
+
+    def _get_full_name(self, node: ast.AST) -> str | None:
+        """Recursively get the full name of a function or method call.
+
+        An attribute access like `obj.method` is represented by an `ast.Attribute`
+        node, which looks like this:
+        ```python
+        Attribute(
+            value=Name(id='obj', ctx=Load()),
+            attr='method',
+            ctx=Load()
+        )
+        ```
+
+        Method calls are a little more complicated, but follow the same pattern &
+        so can be resolved in the sam manner. We handle chained calls by recursion.
+
+        ```
+        """
+
+        if isinstance(node, ast.Attribute):
+            return f"{self._get_full_name(node.value)}.{node.attr}"
+
+        if isinstance(node, ast.Name):
+            return node.id
+
+        # Something like this could help us resolved functions stored in variables:
+        """
+        if f := self.user_namespace.get(node.id):
+            # If the node is a name in the user namespace, return it
+            return f.__name__
+        """
+        return None
+
+    def safe_eval(self, node: ast.AST) -> Any:
+        """Try to evaluate a node, or return the unparsed node if that fails."""
+        try:
+            return ast.literal_eval(node)
+        except (ValueError, SyntaxError):
+            return ast.unparse(node)
+
+    def _extract_call_chain(self, node: ast.Call) -> list[ast.Call]:
+        """Extract all calls in a chained method call using recursion.
+
+        Returns calls in execution order (innermost to outermost).
+
+        For a chain like `c.method1().method2().method3()`, this returns:
+        ```python
+        [c.method1(), method1().method2(), method2().method3()]
+        ```
+        """
+
+        def _extract_inner(current: ast.Call) -> list[ast.Call]:
+            # Base case:
+            if not (
+                isinstance(current.func, ast.Attribute)
+                and isinstance(current.func.value, ast.Call)
+            ):
+                return [current]
+
+            # Recursively prepend inner calls, stopping when our first call which
+            # isn't an attribute is reached.
+            inner_calls = _extract_inner(current.func.value)
+            return inner_calls + [current]
+
+        return _extract_inner(node)
+
     def _resolve_function_name(self, node: ast.Call) -> str | None:
-        """Resolve a function name using various strategies."""
+        """Resolve a function name, trying sucessively more complex patterns."""
         if not (full_name := self._get_full_name(node.func)):
             return None
 
@@ -212,7 +260,6 @@ class CallListener(ast.NodeVisitor):
         if func_name := self._resolve_inline_instantiation(node):
             return func_name
 
-        # Finally check for chained calls
         if func_name := self._resolve_chained_call(node):
             return func_name
 
@@ -305,29 +352,6 @@ class CallListener(ast.NodeVisitor):
 
         method_name = node.func.attr
         return f"{class_name}.{method_name}"
-
-    def visit_Subscript(self, node: ast.Subscript) -> None:
-        """Handle subscript operations."""
-        func_name = None
-
-        if full_name := self._get_full_name(node.value):  # Get the object being indexed
-            parts = full_name.split(".")
-            instance = self.user_namespace.get(parts[0])
-            if instance is None:
-                return None
-
-            class_name = type(instance).__name__
-            func_name = f"{class_name}.{'.'.join(parts[1:])}__getitem__"
-
-        if isinstance(node.slice, ast.Name):
-            args = self.user_namespace.get(node.slice.id, None)
-        else:
-            args = ast.unparse(node.slice)
-
-        if func_name:
-            self._process_api_call(func_name, [args], {})
-
-        self.generic_visit(node)
 
     def _process_api_call(
         self, func_name: str, args: list[Any], kwargs: dict[str, Any]

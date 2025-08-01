@@ -3,10 +3,15 @@
 
 """Tests for the AST module"""
 
-import ast
+import libcst as cst
 import sys
 import pytest
-from access_py_telemetry.ast import CallListener, strip_magic, capture_registered_calls
+from access_py_telemetry.ast import (
+    CallListener,
+    ChainSimplifier,
+    strip_magic,
+    capture_registered_calls,
+)
 from unittest.mock import MagicMock
 
 
@@ -39,11 +44,14 @@ instance.uncaught_func()
 
     mock_api_handler = MagicMock()
 
-    tree = ast.parse(mock_info.raw_cell)
+    tree = cst.parse_module(mock_info.raw_cell)
+    reducer = ChainSimplifier(mock_user_ns, mock_registry, mock_api_handler)
+    reduced_tree = tree.visit(reducer)
 
     visitor = CallListener(mock_user_ns, mock_registry, mock_api_handler)
+    reduced_tree.visit(visitor)
 
-    visitor.visit(tree)
+    visitor._caught_calls = reducer._caught_calls
 
     assert visitor._caught_calls == {
         "MyClass.func",
@@ -74,11 +82,14 @@ unregistered_func()
 
     mock_api_handler = MagicMock()
 
-    tree = ast.parse(mock_info.raw_cell)
+    tree = cst.parse_module(mock_info.raw_cell)
+    reducer = ChainSimplifier(mock_user_ns, mock_registry, mock_api_handler)
+    reduced_tree = tree.visit(reducer)
 
     visitor = CallListener(mock_user_ns, mock_registry, mock_api_handler)
+    reduced_tree.visit(visitor)
 
-    visitor.visit(tree)
+    visitor._caught_calls = reducer._caught_calls
 
     assert visitor._caught_calls == {
         "registered_func",
@@ -118,11 +129,14 @@ registered_func2(pd.DataFrame())
 
     mock_api_handler = MagicMock()
 
-    tree = ast.parse(mock_info.raw_cell)
+    tree = cst.parse_module(mock_info.raw_cell)
+    reducer = ChainSimplifier(mock_user_ns, mock_registry, mock_api_handler)
+    reduced_tree = tree.visit(reducer)
 
     visitor = CallListener(mock_user_ns, mock_registry, mock_api_handler)
+    reduced_tree.visit(visitor)
 
-    visitor.visit(tree)
+    visitor._caught_calls = reducer._caught_calls
 
     assert visitor._caught_calls == {
         "registered_func",
@@ -163,11 +177,14 @@ unregistered_func()
 
     mock_api_handler = MagicMock()
 
-    tree = ast.parse(mock_info.raw_cell)
+    tree = cst.parse_module(mock_info.raw_cell)
+    reducer = ChainSimplifier(mock_user_ns, mock_registry, mock_api_handler)
+    reduced_tree = tree.visit(reducer)
 
     visitor = CallListener(mock_user_ns, mock_registry, mock_api_handler)
+    reduced_tree.visit(visitor)
 
-    visitor.visit(tree)
+    visitor._caught_calls = reducer._caught_calls
 
     assert visitor._caught_calls == {
         "registered_func",
@@ -201,11 +218,14 @@ MyClass().func()
 
     mock_api_handler = MagicMock()
 
-    tree = ast.parse(mock_info.raw_cell)
+    tree = cst.parse_module(mock_info.raw_cell)
+    reducer = ChainSimplifier(mock_user_ns, mock_registry, mock_api_handler)
+    reduced_tree = tree.visit(reducer)
 
     visitor = CallListener(mock_user_ns, mock_registry, mock_api_handler)
+    reduced_tree.visit(visitor)
 
-    visitor.visit(tree)
+    visitor._caught_calls = reducer._caught_calls
 
     assert visitor._caught_calls == {
         "MyClass.func",
@@ -240,11 +260,14 @@ MyClass.func(instance)
 
     mock_api_handler = MagicMock()
 
-    tree = ast.parse(mock_info.raw_cell)
+    tree = cst.parse_module(mock_info.raw_cell)
+    reducer = ChainSimplifier(mock_user_ns, mock_registry, mock_api_handler)
+    reduced_tree = tree.visit(reducer)
 
     visitor = CallListener(mock_user_ns, mock_registry, mock_api_handler)
+    reduced_tree.visit(visitor)
 
-    visitor.visit(tree)
+    visitor._caught_calls = reducer._caught_calls
 
     assert visitor._caught_calls == {
         "MyClass.class_func",
@@ -278,11 +301,14 @@ l[0]
 
     mock_api_handler = MagicMock()
 
-    tree = ast.parse(mock_info.raw_cell)
+    tree = cst.parse_module(mock_info.raw_cell)
+    reducer = ChainSimplifier(mock_user_ns, mock_registry, mock_api_handler)
+    reduced_tree = tree.visit(reducer)
 
     visitor = CallListener(mock_user_ns, mock_registry, mock_api_handler)
+    reduced_tree.visit(visitor)
 
-    visitor.visit(tree)
+    visitor._caught_calls = reducer._caught_calls
 
     assert visitor._caught_calls == {
         "MyClass.__getitem__",
@@ -307,11 +333,14 @@ os.path.join("some","paths")
 
     mock_api_handler = MagicMock()
 
-    tree = ast.parse(mock_info.raw_cell)
+    tree = cst.parse_module(mock_info.raw_cell)
+    reducer = ChainSimplifier(mock_user_ns, mock_registry, mock_api_handler)
+    reduced_tree = tree.visit(reducer)
 
     visitor = CallListener(mock_user_ns, mock_registry, mock_api_handler)
+    reduced_tree.visit(visitor)
 
-    visitor.visit(tree)
+    visitor._caught_calls = reducer._caught_calls
 
     assert visitor._caught_calls == {
         "os.path.join",
@@ -335,11 +364,14 @@ operating_system.path.join("some","paths")
 
     mock_api_handler = MagicMock()
 
-    tree = ast.parse(mock_info.raw_cell)
+    tree = cst.parse_module(mock_info.raw_cell)
+    reducer = ChainSimplifier(mock_user_ns, mock_registry, mock_api_handler)
+    reduced_tree = tree.visit(reducer)
 
     visitor = CallListener(mock_user_ns, mock_registry, mock_api_handler)
+    reduced_tree.visit(visitor)
 
-    visitor.visit(tree)
+    visitor._caught_calls = reducer._caught_calls
 
     assert visitor._caught_calls == {
         "os.path.join",
@@ -379,7 +411,7 @@ instance = MyClass()
 
 mycall = instance['directly_used_string'] 
 """,
-            ("mock", "MyClass.__getitem__", ["'directly_used_string'"], {}),
+            ("mock", "MyClass.__getitem__", ["directly_used_string"], {}),
         ),
     ],
 )
@@ -404,11 +436,14 @@ def test_ast_aliased_index(raw_cell, called_with):
 
     mock_api_handler = MagicMock()
 
-    tree = ast.parse(mock_info.raw_cell)
+    tree = cst.parse_module(mock_info.raw_cell)
+    reducer = ChainSimplifier(mock_user_ns, mock_registry, mock_api_handler)
+    reduced_tree = tree.visit(reducer)
 
     visitor = CallListener(mock_user_ns, mock_registry, mock_api_handler)
+    reduced_tree.visit(visitor)
 
-    visitor.visit(tree)
+    visitor._caught_calls = reducer._caught_calls
 
     mock_api_handler.send_api_request.assert_called_once_with(*called_with)
 
@@ -429,11 +464,14 @@ intake.cat.access_nri
 
     mock_api_handler = MagicMock()
 
-    tree = ast.parse(mock_info.raw_cell)
+    tree = cst.parse_module(mock_info.raw_cell)
+    reducer = ChainSimplifier(mock_user_ns, mock_registry, mock_api_handler)
+    reduced_tree = tree.visit(reducer)
 
     visitor = CallListener(mock_user_ns, mock_registry, mock_api_handler)
+    reduced_tree.visit(visitor)
 
-    visitor.visit(tree)
+    visitor._caught_calls = reducer._caught_calls
 
     assert visitor._caught_calls == {
         "intake.cat.access_nri",
@@ -456,11 +494,14 @@ cat = intake.cat.access_nri
 
     mock_api_handler = MagicMock()
 
-    tree = ast.parse(mock_info.raw_cell)
+    tree = cst.parse_module(mock_info.raw_cell)
+    reducer = ChainSimplifier(mock_user_ns, mock_registry, mock_api_handler)
+    reduced_tree = tree.visit(reducer)
 
     visitor = CallListener(mock_user_ns, mock_registry, mock_api_handler)
+    reduced_tree.visit(visitor)
 
-    visitor.visit(tree)
+    visitor._caught_calls = reducer._caught_calls
 
     assert visitor._caught_calls == {
         "intake.cat.access_nri",
@@ -488,11 +529,14 @@ intake.cat.access_nri
 
     mock_api_handler = MagicMock()
 
-    tree = ast.parse(mock_info.raw_cell)
+    tree = cst.parse_module(mock_info.raw_cell)
+    reducer = ChainSimplifier(mock_user_ns, mock_registry, mock_api_handler)
+    reduced_tree = tree.visit(reducer)
 
     visitor = CallListener(mock_user_ns, mock_registry, mock_api_handler)
+    reduced_tree.visit(visitor)
 
-    visitor.visit(tree)
+    visitor._caught_calls = reducer._caught_calls
 
     assert visitor._caught_calls == {
         "intake.cat.access_nri",
@@ -543,9 +587,9 @@ MyClass.func(instance)
 
     assert parsed_w_magic == parsed_wo_magic
 
-    a = ast.dump(ast.parse(parsed_w_magic), annotate_fields=False)
-    b = ast.dump(ast.parse(parsed_wo_magic), annotate_fields=False)
-    assert a == b
+    tree_w_magic = cst.parse_module(parsed_w_magic)
+    tree_wo_magic = cst.parse_module(parsed_wo_magic)
+    assert tree_w_magic.deep_equals(tree_wo_magic)
 
 
 def test_parse_invalid_code():
@@ -608,10 +652,13 @@ arr.mean()
 
     mock_api_handler = MagicMock()
 
-    tree = ast.parse(mock_info.raw_cell)
+    tree = cst.parse_module(mock_info.raw_cell)
+    reducer = ChainSimplifier(mock_user_ns, mock_registry, mock_api_handler)
+    reduced_tree = tree.visit(reducer)
 
     visitor = CallListener(mock_user_ns, mock_registry, mock_api_handler)
+    reduced_tree.visit(visitor)
 
-    visitor.visit(tree)
+    visitor._caught_calls = reducer._caught_calls
 
     assert visitor._caught_calls == {"ndarray.mean"}

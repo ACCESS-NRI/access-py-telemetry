@@ -4,7 +4,10 @@ SPDX-License-Identifier: Apache-2.0
 """
 
 from typing import Any
-import ast
+import libcst as cst
+from ast import literal_eval, unparse
+from libcst._exceptions import ParserSyntaxError
+import libcst.matchers as m
 import re
 from IPython.core.getipython import get_ipython
 from IPython.core.interactiveshell import ExecutionInfo
@@ -68,15 +71,18 @@ def capture_registered_calls(info: ExecutionInfo) -> None:
     code = strip_magic(code)
 
     try:
-        tree = ast.parse(code)
-    except (SyntaxError, IndentationError):
+        tree = cst.parse_module(code)
+    except (ParserSyntaxError, IndentationError):
         return None
 
     user_namespace: dict[str, Any] = get_ipython().user_ns  # type: ignore
 
     try:
+        reducer = ChainSimplifier(user_namespace, REGISTRIES, api_handler)
+        reduced_tree = tree.visit(reducer)
         visitor = CallListener(user_namespace, REGISTRIES, api_handler)
-        visitor.visit(tree)
+        reduced_tree.visit(visitor)
+        visitor._caught_calls = reducer._caught_calls
     except Exception:
         # Catch all exceptions to avoid breaking the execution
         # of the code being run.
@@ -85,7 +91,42 @@ def capture_registered_calls(info: ExecutionInfo) -> None:
     return None
 
 
-class CallListener(ast.NodeVisitor):
+def extract_call_args_kwargs(call_node: cst.Call) -> tuple[list, dict]:
+    """
+    Take a cst Call Node and extract the args and kwargs, into a tuple of (args, kwargs)
+    """
+    args: list[Any] = []
+    kwargs: list[str, Any] = {}
+    for arg in call_node.args:
+        if arg.keyword is None:
+            args.append(arg.value)
+        else:
+            key = arg.keyword.value
+            kwargs[key] = arg.value.value
+            # ^ Arg.value.value looks stupid, but arg.value is a cst Node itself
+            # For catalogs, it's usually a cst.SimpleString or something like that,
+            # so we could probably literal eval it?
+
+    return args, kwargs
+
+
+def format_args(args: list[Any], kwargs: dict[str, Any]) -> str:
+    """
+    Format args and kwargs into a string representation
+    """
+    if args:
+        args_str = ", ".join([arg for arg in args])
+    if kwargs:
+        kwargs_str = ", ".join([f"{k}={v}" for k, v in kwargs.items()])
+
+    if not args:
+        return kwargs_str if kwargs_str else ""
+    return f"{args_str}, {kwargs_str}" if kwargs_str else args_str
+
+
+class CallListener(cst.CSTVisitor):
+    METADATA_DEPENDENCIES = (cst.metadata.ParentNodeProvider,)
+
     def __init__(
         self,
         user_namespace: dict[str, Any],
@@ -97,28 +138,26 @@ class CallListener(ast.NodeVisitor):
         self._caught_calls: set[str] = set()  # Mostly for debugging
         self.api_handler = api_handler
 
-    def _get_full_name(self, node: ast.AST) -> str | None:
+    def _get_full_name(self, node: cst.CSTNode) -> str | None:
         """Recursively get the full name of a function or method call."""
-        if isinstance(node, ast.Attribute):
+        if isinstance(node, cst.Attribute):
             return f"{self._get_full_name(node.value)}.{node.attr}"
-        elif isinstance(node, ast.Name):
-            return node.id
+        elif isinstance(node, cst.Name):
+            return node.value
         return None
 
-    def safe_eval(self, node: ast.AST) -> Any:
+    def safe_eval(self, node: cst.CSTNode) -> Any:
         """Try to evaluate a node, or return the unparsed node if that fails."""
         try:
-            return ast.literal_eval(node)
+            return literal_eval(node.value.value)
         except (ValueError, SyntaxError):
-            return ast.unparse(node)
+            return unparse(node.value.value)
 
-    def visit_Attribute(self, node: ast.Attribute) -> None:
+    def visit_Attribute(self, node: cst.Attribute) -> None:
         if full_name := self._get_full_name(node):
             self._process_api_call(full_name, [], {})
 
-        self.generic_visit(node)
-
-    def visit_Call(self, node: ast.Call) -> None:
+    def visit_Call(self, node: cst.Call) -> None:
         full_name = self._get_full_name(node.func)
         func_name = None
         if full_name:
@@ -130,7 +169,6 @@ class CallListener(ast.NodeVisitor):
                 # Check if the first part is in the user namespace
                 instance = self.user_namespace.get(parts[0])
                 if instance is None:
-                    self.generic_visit(node)
                     return None
 
                 class_name = type(instance).__name__
@@ -139,19 +177,11 @@ class CallListener(ast.NodeVisitor):
                 else:
                     func_name = f"{instance.__name__}.{'.'.join(parts[1:])}"
 
-        args = [self.safe_eval(arg) for arg in node.args]
-        kwargs = {
-            kw.arg: self.safe_eval(kw.value)
-            for kw in node.keywords
-            if kw.arg is not None
-        }
-
+        args, kwargs = extract_call_args_kwargs(node)
         if func_name:
             self._process_api_call(func_name, args, kwargs)
 
-        self.generic_visit(node)
-
-    def visit_Subscript(self, node: ast.Subscript) -> None:
+    def visit_Subscript(self, node: cst.Subscript) -> None:
         """Handle subscript operations."""
         full_name = self._get_full_name(node.value)  # Get the object being indexed
         func_name = None
@@ -164,15 +194,73 @@ class CallListener(ast.NodeVisitor):
             class_name = type(instance).__name__
             func_name = f"{class_name}.{'.'.join(parts[1:])}__getitem__"
 
-        if isinstance(node.slice, ast.Name):
-            args = self.user_namespace.get(node.slice.id, None)
-        else:
-            args = ast.unparse(node.slice)
+        if isinstance(node.slice, cst.Name):
+            args = self.user_namespace.get(node.slice.value, None)
+        elif isinstance(node.slice[0], cst.SubscriptElement):  # This is a mess
+            try:
+                args = literal_eval(node.slice[0].slice.value.value)  # Thus is a mess
+            except Exception:
+                args = self.user_namespace.get(node.slice[0].slice.value.value, None)
 
         if func_name:
             self._process_api_call(func_name, [args], {})
 
-        self.generic_visit(node)
+    def _process_api_call(
+        self, func_name: str, args: list[Any], kwargs: dict[str, Any]
+    ) -> None:
+        """Process an API call for a matched function name."""
+        for registry, registered_funcs in self.registries.items():
+            if func_name in registered_funcs:
+                self.api_handler.send_api_request(
+                    registry,
+                    func_name,
+                    args,
+                    kwargs,
+                )
+                self._caught_calls |= {func_name}
+
+
+class ChainSimplifier(cst.CSTTransformer):
+    """
+    Transform chained calls by removing intermediate method calls
+    Example: ds.search(...).search(...).to_dataset_dict()
+    becomes: ds.to_dataset_dict()
+    """
+
+    def __init__(
+        self,
+        user_namespace: dict[str, Any],
+        registries: dict[str, set[str]],
+        api_handler: ApiHandler,
+    ):
+        self.user_namespace = user_namespace
+        self.registries = registries
+        self._caught_calls: set[str] = set()  # Mostly for debugging
+        self.api_handler = api_handler
+
+    def leave_Call(self, original_node: cst.Call, updated_node: cst.Call) -> cst.Call:
+        # Use matcher to identify the pattern: any_method(search_call(...))
+        search_pattern = m.Call(
+            func=m.Attribute(value=m.Call(func=m.Attribute(attr=m.Name("func"))))
+        )
+
+        if m.matches(updated_node, search_pattern):
+            # Extract the method name and inner call
+            method_name = updated_node.func.attr.value
+            inner_call = updated_node.func.value
+
+            func_name = inner_call.func.attr.value
+
+            args, kwargs = extract_call_args_kwargs(inner_call)
+
+            self._process_api_call(func_name, args, kwargs)
+
+            # Replace the value with the inner call's value
+            # This effectively removes the search() call
+            new_func = updated_node.func.with_changes(value=inner_call.func.value)
+            return updated_node.with_changes(func=new_func)
+
+        return updated_node
 
     def _process_api_call(
         self, func_name: str, args: list[Any], kwargs: dict[str, Any]

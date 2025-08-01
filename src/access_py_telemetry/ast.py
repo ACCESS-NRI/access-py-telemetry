@@ -91,18 +91,18 @@ def capture_registered_calls(info: ExecutionInfo) -> None:
     return None
 
 
-def extract_call_args_kwargs(call_node: cst.Call) -> tuple[list, dict]:
+def extract_call_args_kwargs(call_node: cst.Call) -> tuple[list[Any], dict[str, Any]]:
     """
     Take a cst Call Node and extract the args and kwargs, into a tuple of (args, kwargs)
     """
     args: list[Any] = []
-    kwargs: list[str, Any] = {}
+    kwargs: dict[str, Any] = {}
     for arg in call_node.args:
         if arg.keyword is None:
             args.append(arg.value)
         else:
-            key = arg.keyword.value
-            kwargs[key] = arg.value.value
+            key = str(arg.keyword.value)
+            kwargs[key] = arg.value.value  # type: ignore[attr-defined]
             # ^ Arg.value.value looks stupid, but arg.value is a cst Node itself
             # For catalogs, it's usually a cst.SimpleString or something like that,
             # so we could probably literal eval it?
@@ -138,16 +138,19 @@ class CallListener(cst.CSTVisitor):
         self._caught_calls: set[str] = set()  # Mostly for debugging
         self.api_handler = api_handler
 
-    def _get_full_name(self, node: cst.CSTNode) -> str | None:
+    def _get_full_name(self, node: cst.CSTNode) -> Any | None:
         """Recursively get the full name of a function or method call."""
         if isinstance(node, cst.Attribute):
-            return f"{self._get_full_name(node.value)}.{node.attr}"
+            return f"{self._get_full_name(node.value)}.{node.attr.value}"
         elif isinstance(node, cst.Name):
             return node.value
         return None
 
     def safe_eval(self, node: cst.CSTNode) -> Any:
         """Try to evaluate a node, or return the unparsed node if that fails."""
+        if not hasattr(node, "value"):
+            return unparse(node)  # type: ignore[arg-type]
+
         try:
             return literal_eval(node.value.value)
         except (ValueError, SyntaxError):
@@ -194,13 +197,14 @@ class CallListener(cst.CSTVisitor):
             class_name = type(instance).__name__
             func_name = f"{class_name}.{'.'.join(parts[1:])}__getitem__"
 
+        # This whole if/else chain is a complete mess
         if isinstance(node.slice, cst.Name):
             args = self.user_namespace.get(node.slice.value, None)
         elif isinstance(node.slice[0], cst.SubscriptElement):  # This is a mess
             try:
-                args = literal_eval(node.slice[0].slice.value.value)  # Thus is a mess
+                args = literal_eval(node.slice[0].slice.value.value)  # type: ignore
             except Exception:
-                args = self.user_namespace.get(node.slice[0].slice.value.value, None)
+                args = self.user_namespace.get(node.slice[0].slice.value.value, None)  # type: ignore
 
         if func_name:
             self._process_api_call(func_name, [args], {})
@@ -246,8 +250,8 @@ class ChainSimplifier(cst.CSTTransformer):
 
         if m.matches(updated_node, search_pattern):
             # Extract the method name and inner call
-            method_name = updated_node.func.attr.value
-            inner_call = updated_node.func.value
+
+            inner_call = updated_node.func.value  # type: ignore[attr-defined]
 
             func_name = inner_call.func.attr.value
 

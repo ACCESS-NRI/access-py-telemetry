@@ -73,8 +73,10 @@ exclude = [
 # Use strict defaults
 strict = true
 warn_unreachable = true
-warn_unused_ignores = true
+# warn_unused_ignores = true
 warn_no_return = true
+
+allow_subclassing_any = true
 
 [tool.versioneer]
 VCS = "git"

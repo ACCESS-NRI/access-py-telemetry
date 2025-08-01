@@ -51,7 +51,7 @@ instance.uncaught_func()
     visitor = CallListener(mock_user_ns, mock_registry, mock_api_handler)
     reduced_tree.visit(visitor)
 
-    visitor._caught_calls = reducer._caught_calls
+    visitor._caught_calls |= reducer._caught_calls
 
     assert visitor._caught_calls == {
         "MyClass.func",
@@ -89,7 +89,7 @@ unregistered_func()
     visitor = CallListener(mock_user_ns, mock_registry, mock_api_handler)
     reduced_tree.visit(visitor)
 
-    visitor._caught_calls = reducer._caught_calls
+    visitor._caught_calls |= reducer._caught_calls
 
     assert visitor._caught_calls == {
         "registered_func",
@@ -136,7 +136,7 @@ registered_func2(pd.DataFrame())
     visitor = CallListener(mock_user_ns, mock_registry, mock_api_handler)
     reduced_tree.visit(visitor)
 
-    visitor._caught_calls = reducer._caught_calls
+    visitor._caught_calls |= reducer._caught_calls
 
     assert visitor._caught_calls == {
         "registered_func",
@@ -184,7 +184,7 @@ unregistered_func()
     visitor = CallListener(mock_user_ns, mock_registry, mock_api_handler)
     reduced_tree.visit(visitor)
 
-    visitor._caught_calls = reducer._caught_calls
+    visitor._caught_calls |= reducer._caught_calls
 
     assert visitor._caught_calls == {
         "registered_func",
@@ -225,7 +225,7 @@ MyClass().func()
     visitor = CallListener(mock_user_ns, mock_registry, mock_api_handler)
     reduced_tree.visit(visitor)
 
-    visitor._caught_calls = reducer._caught_calls
+    visitor._caught_calls |= reducer._caught_calls
 
     assert visitor._caught_calls == {
         "MyClass.func",
@@ -267,7 +267,7 @@ MyClass.func(instance)
     visitor = CallListener(mock_user_ns, mock_registry, mock_api_handler)
     reduced_tree.visit(visitor)
 
-    visitor._caught_calls = reducer._caught_calls
+    visitor._caught_calls |= reducer._caught_calls
 
     assert visitor._caught_calls == {
         "MyClass.class_func",
@@ -308,7 +308,7 @@ l[0]
     visitor = CallListener(mock_user_ns, mock_registry, mock_api_handler)
     reduced_tree.visit(visitor)
 
-    visitor._caught_calls = reducer._caught_calls
+    visitor._caught_calls |= reducer._caught_calls
 
     assert visitor._caught_calls == {
         "MyClass.__getitem__",
@@ -340,7 +340,7 @@ os.path.join("some","paths")
     visitor = CallListener(mock_user_ns, mock_registry, mock_api_handler)
     reduced_tree.visit(visitor)
 
-    visitor._caught_calls = reducer._caught_calls
+    visitor._caught_calls |= reducer._caught_calls
 
     assert visitor._caught_calls == {
         "os.path.join",
@@ -371,7 +371,7 @@ operating_system.path.join("some","paths")
     visitor = CallListener(mock_user_ns, mock_registry, mock_api_handler)
     reduced_tree.visit(visitor)
 
-    visitor._caught_calls = reducer._caught_calls
+    visitor._caught_calls |= reducer._caught_calls
 
     assert visitor._caught_calls == {
         "os.path.join",
@@ -443,7 +443,7 @@ def test_ast_aliased_index(raw_cell, called_with):
     visitor = CallListener(mock_user_ns, mock_registry, mock_api_handler)
     reduced_tree.visit(visitor)
 
-    visitor._caught_calls = reducer._caught_calls
+    visitor._caught_calls |= reducer._caught_calls
 
     mock_api_handler.send_api_request.assert_called_once_with(*called_with)
 
@@ -471,7 +471,7 @@ intake.cat.access_nri
     visitor = CallListener(mock_user_ns, mock_registry, mock_api_handler)
     reduced_tree.visit(visitor)
 
-    visitor._caught_calls = reducer._caught_calls
+    visitor._caught_calls |= reducer._caught_calls
 
     assert visitor._caught_calls == {
         "intake.cat.access_nri",
@@ -501,7 +501,7 @@ cat = intake.cat.access_nri
     visitor = CallListener(mock_user_ns, mock_registry, mock_api_handler)
     reduced_tree.visit(visitor)
 
-    visitor._caught_calls = reducer._caught_calls
+    visitor._caught_calls |= reducer._caught_calls
 
     assert visitor._caught_calls == {
         "intake.cat.access_nri",
@@ -536,7 +536,7 @@ intake.cat.access_nri
     visitor = CallListener(mock_user_ns, mock_registry, mock_api_handler)
     reduced_tree.visit(visitor)
 
-    visitor._caught_calls = reducer._caught_calls
+    visitor._caught_calls |= reducer._caught_calls
 
     assert visitor._caught_calls == {
         "intake.cat.access_nri",
@@ -659,6 +659,6 @@ arr.mean()
     visitor = CallListener(mock_user_ns, mock_registry, mock_api_handler)
     reduced_tree.visit(visitor)
 
-    visitor._caught_calls = reducer._caught_calls
+    visitor._caught_calls |= reducer._caught_calls
 
     assert visitor._caught_calls == {"ndarray.mean"}

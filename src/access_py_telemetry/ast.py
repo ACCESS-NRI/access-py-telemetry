@@ -196,50 +196,6 @@ class CallListener(cst.CSTVisitor):
             case _:
                 return None
 
-    def visit_Subscript(self, node: cst.Subscript) -> None:
-        """Handle subscript operations."""
-        self._visit_subscript(node)
-
-    def _visit_subscript(self, node: cst.Subscript) -> None:
-        match node:
-            case cst.Subscript(
-                value=cst.Name(value=base_name),
-                slice=[
-                    cst.SubscriptElement(
-                        slice=cst.Index(value=cst.SimpleString(value=args))
-                    )
-                ],
-            ):
-                # This is a subscript operation like `ds["key"]`
-                func_name = f"{base_name}.__getitem__"
-                self._process_api_call(func_name, [args], {})
-            case _:
-                raise AssertionError("Branch not covered")
-
-    def __visit_subscript(self, node: cst.Subscript) -> None:
-        full_name = self._get_full_name(node.value)  # Get the object being indexed
-        func_name = None
-        if full_name:
-            parts = full_name.split(".")
-            instance = self.user_namespace.get(parts[0])
-            if instance is None:
-                return None
-
-            class_name = type(instance).__name__
-            func_name = f"{class_name}.{'.'.join(parts[1:])}__getitem__"
-
-        # This whole if/else chain is a complete mess
-        if isinstance(node.slice, cst.Name):
-            args = self.user_namespace.get(node.slice.value, None)
-        elif isinstance(node.slice[0], cst.SubscriptElement):  # This is a mess
-            try:
-                args = literal_eval(node.slice[0].slice.value.value)  # type: ignore
-            except Exception:
-                args = self.user_namespace.get(node.slice[0].slice.value.value, None)  # type: ignore
-
-        if func_name:
-            self._process_api_call(func_name, [args], {})
-
     def _process_api_call(
         self, func_name: str, args: list[Any], kwargs: dict[str, Any]
     ) -> None:

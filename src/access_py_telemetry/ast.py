@@ -114,14 +114,17 @@ def format_args(args: list[Any], kwargs: dict[str, Any]) -> str:
     """
     Format args and kwargs into a string representation
     """
-    if args:
-        args_str = ", ".join([arg for arg in args])
-    if kwargs:
-        kwargs_str = ", ".join([f"{k}={v}" for k, v in kwargs.items()])
-
-    if not args:
-        return kwargs_str if kwargs_str else ""
-    return f"{args_str}, {kwargs_str}" if kwargs_str else args_str
+    match args, kwargs:
+        case ([], {}):
+            return ""
+        case ([], _):
+            return ", ".join([f"{k}={v}" for k, v in kwargs.items()])
+        case _, {}:
+            return ", ".join([str(arg) for arg in args])
+        case _:
+            args_str = ", ".join([str(arg) for arg in args])
+            kwargs_str = ", ".join([f"{k}={v}" for k, v in kwargs.items()])
+            return f"{args_str}, {kwargs_str}"
 
 
 class CallListener(cst.CSTVisitor):
@@ -173,12 +176,6 @@ class CallListener(cst.CSTVisitor):
                 instance = self.user_namespace.get(parts[0])
                 if instance is None:
                     return None
-
-                class_name = type(instance).__name__
-                if class_name != "module":
-                    func_name = f"{class_name}.{'.'.join(parts[1:])}"
-                else:
-                    func_name = f"{instance.__name__}.{'.'.join(parts[1:])}"
 
         args, kwargs = extract_call_args_kwargs(node)
         if func_name:
@@ -241,6 +238,28 @@ class ChainSimplifier(cst.CSTTransformer):
         self.registries = registries
         self._caught_calls: set[str] = set()  # Mostly for debugging
         self.api_handler = api_handler
+
+    def leave_Attribute(
+        self, original_node: cst.Attribute, updated_node: cst.Attribute
+    ) -> cst.Attribute:
+        """
+        When we leave an attribute node, if it's parent is a cst.Name (ie. the
+        root of a chain of attribute accesses), we replace the value of the
+        attribute with the type name of the instance.
+        """
+
+        if isinstance(updated_node.value, cst.Name):
+            instance_name = updated_node.value.value
+            instance = self.user_namespace.get(instance_name)
+
+            if instance is not None:
+                type_name = type(instance).__name__
+                if type_name == "module":
+                    type_name = getattr(instance, "__name__", instance_name)
+
+                # Replace the instance name with the type name
+                return updated_node.with_changes(value=cst.Name(type_name))
+        return updated_node
 
     def leave_Call(self, original_node: cst.Call, updated_node: cst.Call) -> cst.Call:
         # Use matcher to identify the pattern: any_method(search_call(...))

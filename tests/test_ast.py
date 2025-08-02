@@ -662,3 +662,58 @@ arr.mean()
     visitor._caught_calls |= reducer._caught_calls
 
     assert visitor._caught_calls == {"ndarray.mean"}
+
+
+def test_ChainSimplifier_instance_to_classname():
+    """
+    Test that the ChainSimplifier correctly converts instance method calls to class names.
+    """
+    mock_info = MockInfo()
+    mock_info.raw_cell = """
+class MyClass:
+    def __init__(self):
+        self.a = "value"
+
+    def func1(self):
+        return self
+
+    def func2(self):
+        return self
+
+instance = MyClass()
+instance.func1().func2()
+
+instance.a
+"""
+
+    transformed_cell = """
+class MyClass:
+    def __init__(self):
+        self.a = "value"
+
+    def func1(self):
+        return self
+
+    def func2(self):
+        return self
+
+instance = MyClass()
+MyClass.func1().func2()
+
+MyClass.a
+"""
+    f = sys._getframe()
+    exec(mock_info.raw_cell, globals(), f.f_locals)
+    mock_user_ns = f.f_locals
+
+    mock_registry = {"mock": ["ndarray.mean"]}
+
+    mock_api_handler = MagicMock()
+
+    tree = cst.parse_module(mock_info.raw_cell)
+    reducer = ChainSimplifier(mock_user_ns, mock_registry, mock_api_handler)
+    reduced_tree = tree.visit(reducer)
+
+    code = reduced_tree.code
+
+    assert code == transformed_cell

@@ -413,6 +413,16 @@ mycall = instance['directly_used_string']
 """,
             ("mock", "MyClass.__getitem__", ["directly_used_string"], {}),
         ),
+        (
+            """
+l = [0,1,2,3]
+
+MAGIC_NUMBER = 1
+
+l[MAGIC_NUMBER]
+""",
+            ("mock", "list.__getitem__", ["1"], {}),
+        ),
     ],
 )
 def test_ast_aliased_index(raw_cell, called_with):
@@ -702,6 +712,37 @@ MyClass.func1().func2()
 
 MyClass.a
 """
+    f = sys._getframe()
+    exec(mock_info.raw_cell, globals(), f.f_locals)
+    mock_user_ns = f.f_locals
+
+    mock_registry = {"mock": ["ndarray.mean"]}
+
+    mock_api_handler = MagicMock()
+
+    tree = cst.parse_module(mock_info.raw_cell)
+    reducer = ChainSimplifier(mock_user_ns, mock_registry, mock_api_handler)
+    reduced_tree = tree.visit(reducer)
+
+    code = reduced_tree.code
+
+    assert code == transformed_cell
+
+
+def test_ChainSimplifier_indexing():
+    mock_info = MockInfo()
+    mock_info.raw_cell = """
+l = [1, 2, 3]
+
+l[0]
+    """
+
+    transformed_cell = """
+l = [1, 2, 3]
+
+list.__getitem__(0)
+    """
+
     f = sys._getframe()
     exec(mock_info.raw_cell, globals(), f.f_locals)
     mock_user_ns = f.f_locals

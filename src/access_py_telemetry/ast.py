@@ -141,13 +141,27 @@ class CallListener(cst.CSTVisitor):
         self._caught_calls: set[str] = set()  # Mostly for debugging
         self.api_handler = api_handler
 
-    def _get_full_name(self, node: cst.CSTNode) -> Any | None:
+    def _get_full_name(self, node: cst.CSTNode) -> str | None:
         """Recursively get the full name of a function or method call."""
-        if isinstance(node, cst.Attribute):
-            return f"{self._get_full_name(node.value)}.{node.attr.value}"
-        elif isinstance(node, cst.Name):
-            return node.value
-        return None
+        match node:
+            case cst.Attribute(
+                value=base_name,
+                attr=cst.Name(value=attr_name),
+            ):
+                # If the node is an attribute, we need to repeat to get the full name
+                return f"{self._get_full_name(base_name)}.{attr_name}"
+            case cst.Name(value=name):
+                # If the node is a name, we return the name
+                return name
+            case _:
+                return None
+
+    def visit_Attribute(self, node: cst.Attribute) -> None:
+        match self._get_full_name(node):
+            case str(full_name):
+                self._process_api_call(full_name, [], {})
+            case None:
+                pass
 
     def safe_eval(self, node: cst.CSTNode) -> Any:
         """Try to evaluate a node, or return the unparsed node if that fails."""
@@ -159,30 +173,50 @@ class CallListener(cst.CSTVisitor):
         except (ValueError, SyntaxError):
             return unparse(node.value.value)
 
-    def visit_Attribute(self, node: cst.Attribute) -> None:
-        if full_name := self._get_full_name(node):
-            self._process_api_call(full_name, [], {})
-
     def visit_Call(self, node: cst.Call) -> None:
-        full_name = self._get_full_name(node.func)
-        func_name = None
-        if full_name:
-            parts = full_name.split(".")
-            if len(parts) == 1:
-                # Regular function call
-                func_name = f"{full_name}"
-            else:
-                # Check if the first part is in the user namespace
-                instance = self.user_namespace.get(parts[0])
-                if instance is None:
-                    return None
-
-        args, kwargs = extract_call_args_kwargs(node)
-        if func_name:
-            self._process_api_call(func_name, args, kwargs)
+        """
+        Visit a call nodde, process it if it's a registered call
+        """
+        match node:
+            case cst.Call(
+                func=cst.Attribute(
+                    value=cst.Name(value=base_name),
+                    attr=cst.Name(
+                        value=attr_name,
+                    ),
+                )
+            ):
+                args, kwargs = extract_call_args_kwargs(node)
+                full_name = f"{base_name}.{attr_name}"
+                self._process_api_call(full_name, args, kwargs)
+            case cst.Call(func=cst.Name(value=base_name)):
+                # This is a bare function, so pipe that off to telemetry
+                args, kwargs = extract_call_args_kwargs(node)
+                self._process_api_call(base_name, args, kwargs)
+            case _:
+                return None
 
     def visit_Subscript(self, node: cst.Subscript) -> None:
         """Handle subscript operations."""
+        self._visit_subscript(node)
+
+    def _visit_subscript(self, node: cst.Subscript) -> None:
+        match node:
+            case cst.Subscript(
+                value=cst.Name(value=base_name),
+                slice=[
+                    cst.SubscriptElement(
+                        slice=cst.Index(value=cst.SimpleString(value=args))
+                    )
+                ],
+            ):
+                # This is a subscript operation like `ds["key"]`
+                func_name = f"{base_name}.__getitem__"
+                self._process_api_call(func_name, [args], {})
+            case _:
+                raise AssertionError("Branch not covered")
+
+    def __visit_subscript(self, node: cst.Subscript) -> None:
         full_name = self._get_full_name(node.value)  # Get the object being indexed
         func_name = None
         if full_name:
@@ -239,6 +273,19 @@ class ChainSimplifier(cst.CSTTransformer):
         self._caught_calls: set[str] = set()  # Mostly for debugging
         self.api_handler = api_handler
 
+    def _resolve_type(self, instance_name: str) -> str:
+        """
+        Resolve the type of an instance by its name.
+        If the instance is a module, return its name.
+        """
+        instance = self.user_namespace.get(instance_name)
+        if instance is None:
+            return instance_name
+        type_name = type(instance).__name__
+        if type_name == "module":
+            type_name = getattr(instance, "__name__", instance_name)
+        return type_name
+
     def leave_Attribute(
         self, original_node: cst.Attribute, updated_node: cst.Attribute
     ) -> cst.Attribute:
@@ -254,17 +301,76 @@ class ChainSimplifier(cst.CSTTransformer):
                     value=instance_name,
                 ),
                 attr=cst.Name(value=_),
-            ) if (instance := self.user_namespace.get(instance_name)) is not None:
-                # This is something that looks like instance_name.method, and is
-                # in the user namespace.
-                type_name = type(instance).__name__
-                if type_name == "module":
-                    type_name = getattr(instance, "__name__", instance_name)
-                    # Replace the instance name with the type name
+            ) if (type_name := self._resolve_type(instance_name)) is not None:
                 return updated_node.with_changes(value=cst.Name(type_name))
 
             case _:
                 return updated_node
+
+    def leave_Subscript(
+        self, original_node: cst.Subscript, updated_node: cst.Subscript
+    ) -> cst.Call:
+        """
+        When we leave a subscript node, replace eg. `instance[key]` with `ClassName.__getitem__(key)`.
+        This means we can !!get rid of !! the visist_Subscript method in CallListener!
+        """
+        match updated_node:
+            case cst.Subscript(  # String index
+                value=cst.Name(value=instance_name),
+                slice=[
+                    cst.SubscriptElement(
+                        slice=cst.Index(value=cst.SimpleString(value=args))
+                    )
+                ],
+            ) if (type_name := self._resolve_type(instance_name)) is not None:
+                return cst.Call(
+                    func=cst.Attribute(
+                        value=cst.Name(type_name),
+                        attr=cst.Name("__getitem__"),
+                    ),
+                    args=[
+                        cst.Arg(value=cst.SimpleString(value=args)),
+                    ],
+                )
+            case cst.Subscript(  # Integer index
+                value=cst.Name(value=instance_name),
+                slice=[
+                    cst.SubscriptElement(slice=cst.Index(value=cst.Integer(value=args)))
+                ],
+            ) if (type_name := self._resolve_type(instance_name)) is not None:
+                return cst.Call(
+                    func=cst.Attribute(
+                        value=cst.Name(type_name),
+                        attr=cst.Name("__getitem__"),
+                    ),
+                    args=[
+                        cst.Arg(value=cst.Integer(value=args)),
+                    ],
+                )
+            case cst.Subscript(  # Variable index
+                value=cst.Name(value=instance_name),
+                slice=[
+                    cst.SubscriptElement(slice=cst.Index(value=cst.Name(value=args)))
+                ],
+            ) if (type_name := self._resolve_type(instance_name)) is not None:
+                args = self.user_namespace.get(args, args)
+                args = f"'{args}'"  # TODO: match on type here instead
+                return cst.Call(
+                    func=cst.Attribute(
+                        value=cst.Name(type_name),
+                        attr=cst.Name("__getitem__"),
+                    ),
+                    args=[
+                        cst.Arg(
+                            value=cst.SimpleString(value=args)
+                        ),  # TODO: so we can put the right value in here
+                    ],
+                )
+            case _:
+                raise AssertionError(
+                    "Subscript node does not match expected pattern. "
+                    "This should not happen, please report this as a bug."
+                )
 
     def leave_Call(self, original_node: cst.Call, updated_node: cst.Call) -> cst.Call:
         # Use matcher to identify the pattern: any_method(search_call(...))

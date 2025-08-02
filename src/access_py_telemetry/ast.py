@@ -248,18 +248,23 @@ class ChainSimplifier(cst.CSTTransformer):
         attribute with the type name of the instance.
         """
 
-        if isinstance(updated_node.value, cst.Name):
-            instance_name = updated_node.value.value
-            instance = self.user_namespace.get(instance_name)
-
-            if instance is not None:
+        match updated_node:
+            case cst.Attribute(
+                value=cst.Name(
+                    value=instance_name,
+                ),
+                attr=cst.Name(value=_),
+            ) if (instance := self.user_namespace.get(instance_name)) is not None:
+                # This is something that looks like instance_name.method, and is
+                # in the user namespace.
                 type_name = type(instance).__name__
                 if type_name == "module":
                     type_name = getattr(instance, "__name__", instance_name)
-
-                # Replace the instance name with the type name
+                    # Replace the instance name with the type name
                 return updated_node.with_changes(value=cst.Name(type_name))
-        return updated_node
+
+            case _:
+                return updated_node
 
     def leave_Call(self, original_node: cst.Call, updated_node: cst.Call) -> cst.Call:
         # Use matcher to identify the pattern: any_method(search_call(...))

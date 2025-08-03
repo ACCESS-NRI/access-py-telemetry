@@ -1,3 +1,4 @@
+# mypy: disable-error-code=has-type
 """
 Copyright 2022 ACCESS-NRI and contributors. See the top-level COPYRIGHT file for details.
 SPDX-License-Identifier: Apache-2.0
@@ -152,6 +153,7 @@ class CallListener(cst.CSTVisitor):
                 return f"{self._get_full_name(base_name)}.{attr_name}"
             case cst.Name(value=name):
                 # If the node is a name, we return the name
+                assert isinstance(name, str), "Name node should have a string value"
                 return name
             case _:
                 return None

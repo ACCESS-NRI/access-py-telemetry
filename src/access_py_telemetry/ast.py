@@ -92,21 +92,28 @@ def capture_registered_calls(info: ExecutionInfo) -> None:
     return None
 
 
-def extract_call_args_kwargs(call_node: cst.Call) -> tuple[list[Any], dict[str, Any]]:
+def extract_call_args_kwargs(node: cst.Call) -> tuple[list[Any], dict[str, Any]]:
     """
     Take a cst Call Node and extract the args and kwargs, into a tuple of (args, kwargs)
     """
-    args: list[Any] = []
-    kwargs: dict[str, Any] = {}
-    for arg in call_node.args:
-        if arg.keyword is None:
-            args.append(arg.value)
-        else:
-            key = str(arg.keyword.value)
-            kwargs[key] = arg.value.value  # type: ignore[attr-defined]
-            # ^ Arg.value.value looks stupid, but arg.value is a cst Node itself
-            # For catalogs, it's usually a cst.SimpleString or something like that,
-            # so we could probably literal eval it?
+
+    match node:
+        case cst.Call(  # Match a Call node with a function name and arguments
+            func=_,
+            args=_,
+        ):
+            kwargs = {
+                arg.keyword.value: literal_eval(arg.value.value)
+                for arg in node.args
+                if isinstance(arg, cst.Arg) and arg.keyword is not None
+            }
+            args = [
+                literal_eval(arg.value.value)
+                for arg in node.args
+                if isinstance(arg, cst.Arg) and arg.keyword is None
+            ]
+        case _:
+            args, kwargs = [], {}
 
     return args, kwargs
 
@@ -142,38 +149,17 @@ class CallListener(cst.CSTVisitor):
         self._caught_calls: set[str] = set()  # Mostly for debugging
         self.api_handler = api_handler
 
-    def _get_full_name(self, node: cst.CSTNode) -> str | None:
-        """Recursively get the full name of a function or method call."""
-        match node:
-            case cst.Attribute(
-                value=base_name,
-                attr=cst.Name(value=attr_name),
-            ):
-                # If the node is an attribute, we need to repeat to get the full name
-                return f"{self._get_full_name(base_name)}.{attr_name}"
-            case cst.Name(value=name):
-                # If the node is a name, we return the name
-                assert isinstance(name, str), "Name node should have a string value"
-                return name
-            case _:
-                return None
-
     def visit_Attribute(self, node: cst.Attribute) -> None:
-        match self._get_full_name(node):
-            case str(full_name):
+        parent = self.get_metadata(cst.metadata.ParentNodeProvider, node)
+        full_name = self._get_full_name(node)
+        match full_name, parent:
+            case str(), cst.Call():
+                return None
+            case str(), _:
                 self._process_api_call(full_name, [], {})
-            case None:
+            case _, _:
                 pass
-
-    def safe_eval(self, node: cst.CSTNode) -> Any:
-        """Try to evaluate a node, or return the unparsed node if that fails."""
-        if not hasattr(node, "value"):
-            return unparse(node)  # type: ignore[arg-type]
-
-        try:
-            return literal_eval(node.value.value)
-        except (ValueError, SyntaxError):
-            return unparse(node.value.value)
+        return None
 
     def visit_Call(self, node: cst.Call) -> None:
         """
@@ -191,12 +177,23 @@ class CallListener(cst.CSTVisitor):
                 args, kwargs = extract_call_args_kwargs(node)
                 full_name = f"{base_name}.{attr_name}"
                 self._process_api_call(full_name, args, kwargs)
-            case cst.Call(func=cst.Name(value=base_name)):
-                # This is a bare function, so pipe that off to telemetry
-                args, kwargs = extract_call_args_kwargs(node)
-                self._process_api_call(base_name, args, kwargs)
+            case cst.Call(func=cst.Attribute() as attr_node):
+                if full_name := self._get_full_name(attr_node):
+                    # If we have a full name, we can process the call
+                    args, kwargs = extract_call_args_kwargs(node)
+                    self._process_api_call(full_name, args, kwargs)
             case _:
                 return None
+
+    def safe_eval(self, node: cst.CSTNode) -> Any:
+        """Try to evaluate a node, or return the unparsed node if that fails."""
+        if not hasattr(node, "value"):
+            return unparse(node)  # type: ignore[arg-type]
+
+        try:
+            return literal_eval(node.value.value)
+        except (ValueError, SyntaxError):
+            return unparse(node.value.value)
 
     def _process_api_call(
         self, func_name: str, args: list[Any], kwargs: dict[str, Any]
@@ -211,6 +208,22 @@ class CallListener(cst.CSTVisitor):
                     kwargs,
                 )
                 self._caught_calls |= {func_name}
+
+    def _get_full_name(self, node: cst.CSTNode) -> str | None:
+        """Recursively get the full name of a function or method call."""
+        match node:
+            case cst.Attribute(
+                value=base_name,
+                attr=cst.Name(value=attr_name),
+            ):
+                # If the node is an attribute, we need to repeat to get the full name
+                return f"{self._get_full_name(base_name)}.{attr_name}"
+            case cst.Name(value=name):
+                # If the node is a name, we return the name
+                assert isinstance(name, str), "Name node should have a string value"
+                return name
+            case _:
+                return None
 
 
 class ChainSimplifier(cst.CSTTransformer):

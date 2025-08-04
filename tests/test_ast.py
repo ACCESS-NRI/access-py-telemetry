@@ -47,9 +47,10 @@ instance.uncaught_func()
     tree = cst.parse_module(mock_info.raw_cell)
     reducer = ChainSimplifier(mock_user_ns, mock_registry, mock_api_handler)
     reduced_tree = tree.visit(reducer)
+    wrapper = cst.MetadataWrapper(reduced_tree)
 
     visitor = CallListener(mock_user_ns, mock_registry, mock_api_handler)
-    reduced_tree.visit(visitor)
+    wrapper.visit(visitor)
 
     visitor._caught_calls |= reducer._caught_calls
 
@@ -85,9 +86,10 @@ unregistered_func()
     tree = cst.parse_module(mock_info.raw_cell)
     reducer = ChainSimplifier(mock_user_ns, mock_registry, mock_api_handler)
     reduced_tree = tree.visit(reducer)
+    wrapper = cst.MetadataWrapper(reduced_tree)
 
     visitor = CallListener(mock_user_ns, mock_registry, mock_api_handler)
-    reduced_tree.visit(visitor)
+    wrapper.visit(visitor)
 
     visitor._caught_calls |= reducer._caught_calls
 
@@ -132,9 +134,10 @@ registered_func2(pd.DataFrame())
     tree = cst.parse_module(mock_info.raw_cell)
     reducer = ChainSimplifier(mock_user_ns, mock_registry, mock_api_handler)
     reduced_tree = tree.visit(reducer)
+    wrapper = cst.MetadataWrapper(reduced_tree)
 
     visitor = CallListener(mock_user_ns, mock_registry, mock_api_handler)
-    reduced_tree.visit(visitor)
+    wrapper.visit(visitor)
 
     visitor._caught_calls |= reducer._caught_calls
 
@@ -180,9 +183,10 @@ unregistered_func()
     tree = cst.parse_module(mock_info.raw_cell)
     reducer = ChainSimplifier(mock_user_ns, mock_registry, mock_api_handler)
     reduced_tree = tree.visit(reducer)
+    wrapper = cst.MetadataWrapper(reduced_tree)
 
     visitor = CallListener(mock_user_ns, mock_registry, mock_api_handler)
-    reduced_tree.visit(visitor)
+    wrapper.visit(visitor)
 
     visitor._caught_calls |= reducer._caught_calls
 
@@ -221,9 +225,10 @@ MyClass().func()
     tree = cst.parse_module(mock_info.raw_cell)
     reducer = ChainSimplifier(mock_user_ns, mock_registry, mock_api_handler)
     reduced_tree = tree.visit(reducer)
+    wrapper = cst.MetadataWrapper(reduced_tree)
 
     visitor = CallListener(mock_user_ns, mock_registry, mock_api_handler)
-    reduced_tree.visit(visitor)
+    wrapper.visit(visitor)
 
     visitor._caught_calls |= reducer._caught_calls
 
@@ -263,9 +268,10 @@ MyClass.func(instance)
     tree = cst.parse_module(mock_info.raw_cell)
     reducer = ChainSimplifier(mock_user_ns, mock_registry, mock_api_handler)
     reduced_tree = tree.visit(reducer)
+    wrapper = cst.MetadataWrapper(reduced_tree)
 
     visitor = CallListener(mock_user_ns, mock_registry, mock_api_handler)
-    reduced_tree.visit(visitor)
+    wrapper.visit(visitor)
 
     visitor._caught_calls |= reducer._caught_calls
 
@@ -304,9 +310,10 @@ l[0]
     tree = cst.parse_module(mock_info.raw_cell)
     reducer = ChainSimplifier(mock_user_ns, mock_registry, mock_api_handler)
     reduced_tree = tree.visit(reducer)
+    wrapper = cst.MetadataWrapper(reduced_tree)
 
     visitor = CallListener(mock_user_ns, mock_registry, mock_api_handler)
-    reduced_tree.visit(visitor)
+    wrapper.visit(visitor)
 
     visitor._caught_calls |= reducer._caught_calls
 
@@ -336,9 +343,10 @@ os.path.join("some","paths")
     tree = cst.parse_module(mock_info.raw_cell)
     reducer = ChainSimplifier(mock_user_ns, mock_registry, mock_api_handler)
     reduced_tree = tree.visit(reducer)
+    wrapper = cst.MetadataWrapper(reduced_tree)
 
     visitor = CallListener(mock_user_ns, mock_registry, mock_api_handler)
-    reduced_tree.visit(visitor)
+    wrapper.visit(visitor)
 
     visitor._caught_calls |= reducer._caught_calls
 
@@ -367,9 +375,10 @@ operating_system.path.join("some","paths")
     tree = cst.parse_module(mock_info.raw_cell)
     reducer = ChainSimplifier(mock_user_ns, mock_registry, mock_api_handler)
     reduced_tree = tree.visit(reducer)
+    wrapper = cst.MetadataWrapper(reduced_tree)
 
     visitor = CallListener(mock_user_ns, mock_registry, mock_api_handler)
-    reduced_tree.visit(visitor)
+    wrapper.visit(visitor)
 
     visitor._caught_calls |= reducer._caught_calls
 
@@ -449,9 +458,10 @@ def test_ast_aliased_index(raw_cell, called_with):
     tree = cst.parse_module(mock_info.raw_cell)
     reducer = ChainSimplifier(mock_user_ns, mock_registry, mock_api_handler)
     reduced_tree = tree.visit(reducer)
+    wrapper = cst.MetadataWrapper(reduced_tree)
 
     visitor = CallListener(mock_user_ns, mock_registry, mock_api_handler)
-    reduced_tree.visit(visitor)
+    wrapper.visit(visitor)
 
     visitor._caught_calls |= reducer._caught_calls
 
@@ -477,9 +487,10 @@ intake.cat.access_nri
     tree = cst.parse_module(mock_info.raw_cell)
     reducer = ChainSimplifier(mock_user_ns, mock_registry, mock_api_handler)
     reduced_tree = tree.visit(reducer)
+    wrapper = cst.MetadataWrapper(reduced_tree)
 
     visitor = CallListener(mock_user_ns, mock_registry, mock_api_handler)
-    reduced_tree.visit(visitor)
+    wrapper.visit(visitor)
 
     visitor._caught_calls |= reducer._caught_calls
 
@@ -507,9 +518,10 @@ cat = intake.cat.access_nri
     tree = cst.parse_module(mock_info.raw_cell)
     reducer = ChainSimplifier(mock_user_ns, mock_registry, mock_api_handler)
     reduced_tree = tree.visit(reducer)
+    wrapper = cst.MetadataWrapper(reduced_tree)
 
     visitor = CallListener(mock_user_ns, mock_registry, mock_api_handler)
-    reduced_tree.visit(visitor)
+    wrapper.visit(visitor)
 
     visitor._caught_calls |= reducer._caught_calls
 
@@ -542,9 +554,10 @@ intake.cat.access_nri
     tree = cst.parse_module(mock_info.raw_cell)
     reducer = ChainSimplifier(mock_user_ns, mock_registry, mock_api_handler)
     reduced_tree = tree.visit(reducer)
+    wrapper = cst.MetadataWrapper(reduced_tree)
 
     visitor = CallListener(mock_user_ns, mock_registry, mock_api_handler)
-    reduced_tree.visit(visitor)
+    wrapper.visit(visitor)
 
     visitor._caught_calls |= reducer._caught_calls
 
@@ -665,9 +678,10 @@ arr.mean()
     tree = cst.parse_module(mock_info.raw_cell)
     reducer = ChainSimplifier(mock_user_ns, mock_registry, mock_api_handler)
     reduced_tree = tree.visit(reducer)
+    wrapper = cst.MetadataWrapper(reduced_tree)
 
     visitor = CallListener(mock_user_ns, mock_registry, mock_api_handler)
-    reduced_tree.visit(visitor)
+    wrapper.visit(visitor)
 
     visitor._caught_calls |= reducer._caught_calls
 

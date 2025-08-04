@@ -116,7 +116,7 @@ def extract_call_args_kwargs(
                 value=cst.Name(value=val),
                 keyword=None,
             ):
-                if val := user_ns.get(val, None):
+                if val := user_ns.get(val, None):  # type: ignore[arg-type]
                     args.append(val)
             case cst.Arg(
                 value=cst.SimpleString(value=val)
@@ -129,7 +129,7 @@ def extract_call_args_kwargs(
                 cst.Name(value=val),
                 keyword=cst.Name(value=key),
             ):
-                if val := user_ns.get(val, None):
+                if val := user_ns.get(val, None):  # type: ignore[arg-type]
                     kwargs[key] = val
             case _:
                 return args, kwargs
@@ -309,7 +309,9 @@ class ChainSimplifier(cst.CSTTransformer):
                         value=_maybe_class_name,
                     ),
                 )
-            ) if type(self.user_namespace.get(_maybe_class_name, None)) is type:
+            ) if (
+                type(self.user_namespace.get(_maybe_class_name, None)) is type
+            ):
                 return updated_node.with_changes(value=cst.Name(_maybe_class_name))
 
             case _:

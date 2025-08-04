@@ -361,14 +361,15 @@ class ChainSimplifier(cst.CSTTransformer):
                     cst.SubscriptElement(slice=cst.Index(value=cst.Name(value=args)))
                 ],
             ) if (type_name := self._resolve_type(instance_name)) is not None:
-                args = self.user_namespace.get(args, args)
-                match args:
-                    case int():
-                        mval = cst.Integer(value=f"{args}")
-                    case float():
-                        mval = cst.Float(value=f"{args}")
-                    case _:
-                        mval = cst.SimpleString(value=f"'{args}'")
+                res_args: int | float | str | object = self.user_namespace.get(
+                    args, args
+                )
+                if isinstance(res_args, int):
+                    mval: cst.BaseExpression = cst.Integer(value=f"{res_args}")
+                elif isinstance(res_args, float):
+                    mval = cst.Float(value=f"{res_args}")
+                else:
+                    mval = cst.SimpleString(value=f"'{res_args}'")
                 return cst.Call(
                     func=cst.Attribute(
                         value=cst.Name(type_name),

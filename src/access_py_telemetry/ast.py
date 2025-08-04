@@ -95,12 +95,28 @@ def capture_registered_calls(info: ExecutionInfo) -> None:
 def extract_call_args_kwargs(node: cst.Call) -> tuple[list[Any], dict[str, Any]]:
     """
     Take a cst Call Node and extract the args and kwargs, into a tuple of (args, kwargs)
+
+    # TODO: This matcher is a mess
     """
 
     match node:
-        case cst.Call(  # Match a Call node with a function name and arguments
+        case cst.Call(
             func=_,
-            args=_,
+            args=args_list,
+        ) if all(
+            m.matches(
+                arg,
+                m.Arg(
+                    value=m.OneOf(
+                        m.SimpleString(),
+                        m.Integer(),
+                        m.Float(),
+                        m.Name(),
+                        m.FormattedString(),
+                    )
+                ),
+            )
+            for arg in args_list
         ):
             kwargs = {
                 arg.keyword.value: literal_eval(arg.value.value)
@@ -166,6 +182,13 @@ class CallListener(cst.CSTVisitor):
         Visit a call nodde, process it if it's a registered call
         """
         match node:
+            case cst.Call(
+                func=cst.Name(
+                    value=full_name,
+                )
+            ):
+                args, kwargs = extract_call_args_kwargs(node)
+                self._process_api_call(full_name, args, kwargs)
             case cst.Call(
                 func=cst.Attribute(
                     value=cst.Name(value=base_name),

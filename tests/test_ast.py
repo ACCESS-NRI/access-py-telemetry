@@ -61,19 +61,26 @@ instance.uncaught_func()
     assert "MyClass.uncaught_func" not in visitor._caught_calls
 
 
-def test_ast_bare_function():
+def test_ast_bare_function_args_kwargs():
     mock_info = MockInfo()
     mock_info.raw_cell = """
-def registered_func():
+def registered_func(*args, **kwargs):
     return None
 
-def unregistered_func():
-    return None
+x = 1
+y = "a_str"
+z = ["a", "list", 0, "random", ["values", "and", "types"]]
 
-registered_func()
-unregistered_func()
+registered_func(x, y=y, z=z)
 
 """
+
+    called_with = (
+        "mock",
+        "registered_func",
+        [1],
+        {"y": "a_str", "z": ["a", "list", 0, "random", ["values", "and", "types"]]},
+    )
 
     f = sys._getframe()
     exec(mock_info.raw_cell, globals(), f.f_locals)
@@ -97,7 +104,7 @@ unregistered_func()
         "registered_func",
     }
 
-    assert "uncaught_func" not in visitor._caught_calls
+    mock_api_handler.send_api_request.assert_called_once_with(*called_with)
 
 
 def test_ast_unparse_bare_function():
@@ -149,7 +156,6 @@ registered_func2(pd.DataFrame())
     assert "uncaught_func" not in visitor._caught_calls
 
 
-@pytest.mark.xfail
 def test_ast_aliased_function():
     """
     This will require more sophisticated analysis to catch aliased functions. Maybe
@@ -160,16 +166,9 @@ def test_ast_aliased_function():
 def registered_func():
     return None
 
-def unregistered_func():
-    return None
-
-
 reg_func = registered_func
 
 reg_func()
-
-unregistered_func()
-
 """
 
     f = sys._getframe()
@@ -405,7 +404,7 @@ search_str = 'some_item'
 
 mycall = instance[search_str] 
 """,
-            ("mock", "MyClass.__getitem__", ["some_item"], {}),
+            ("mock", "MyClass.__getitem__", ["'some_item'"], {}),
         ),
         (
             """
@@ -420,7 +419,7 @@ instance = MyClass()
 
 mycall = instance['directly_used_string'] 
 """,
-            ("mock", "MyClass.__getitem__", ["directly_used_string"], {}),
+            ("mock", "MyClass.__getitem__", ["'directly_used_string'"], {}),
         ),
         (
             """

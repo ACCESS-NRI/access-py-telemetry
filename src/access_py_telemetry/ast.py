@@ -92,44 +92,47 @@ def capture_registered_calls(info: ExecutionInfo) -> None:
     return None
 
 
-def extract_call_args_kwargs(node: cst.Call) -> tuple[list[Any], dict[str, Any]]:
+def extract_call_args_kwargs(
+    node: cst.Call, user_ns: dict[str, Any]
+) -> tuple[list[Any], dict[str, Any]]:
     """
     Take a cst Call Node and extract the args and kwargs, into a tuple of (args, kwargs)
 
     # TODO: This matcher is a mess
+    - Add support for f-strings
     """
-
-    match node:
-        case cst.Call(
-            func=_,
-            args=args_list,
-        ) if all(
-            m.matches(
-                arg,
-                m.Arg(
-                    value=m.OneOf(
-                        m.SimpleString(),
-                        m.Integer(),
-                        m.Float(),
-                        m.Name(),
-                        m.FormattedString(),
-                    )
-                ),
-            )
-            for arg in args_list
-        ):
-            kwargs = {
-                arg.keyword.value: literal_eval(arg.value.value)
-                for arg in node.args
-                if isinstance(arg, cst.Arg) and arg.keyword is not None
-            }
-            args = [
-                literal_eval(arg.value.value)
-                for arg in node.args
-                if isinstance(arg, cst.Arg) and arg.keyword is None
-            ]
-        case _:
-            args, kwargs = [], {}
+    args = []
+    kwargs = {}
+    for arg in node.args:
+        match arg:
+            case cst.Arg(
+                value=cst.SimpleString(value=val)
+                | cst.Integer(value=val)
+                | cst.Float(value=val),
+                keyword=None,
+            ):
+                args.append(val)
+            case cst.Arg(
+                value=cst.Name(value=val),
+                keyword=None,
+            ):
+                if val := user_ns.get(val, None):
+                    args.append(val)
+            case cst.Arg(
+                value=cst.SimpleString(value=val)
+                | cst.Float(value=val)
+                | cst.Integer(value=val),
+                keyword=cst.Name(value=key),
+            ):
+                kwargs[key] = val
+            case cst.Arg(
+                cst.Name(value=val),
+                keyword=cst.Name(value=key),
+            ):
+                if val := user_ns.get(val, None):
+                    kwargs[key] = val
+            case _:
+                return args, kwargs
 
     return args, kwargs
 
@@ -187,7 +190,7 @@ class CallListener(cst.CSTVisitor):
                     value=full_name,
                 )
             ):
-                args, kwargs = extract_call_args_kwargs(node)
+                args, kwargs = extract_call_args_kwargs(node, self.user_namespace)
                 self._process_api_call(full_name, args, kwargs)
             case cst.Call(
                 func=cst.Attribute(
@@ -197,13 +200,13 @@ class CallListener(cst.CSTVisitor):
                     ),
                 )
             ):
-                args, kwargs = extract_call_args_kwargs(node)
+                args, kwargs = extract_call_args_kwargs(node, self.user_namespace)
                 full_name = f"{base_name}.{attr_name}"
                 self._process_api_call(full_name, args, kwargs)
             case cst.Call(func=cst.Attribute() as attr_node):
                 if full_name := self._get_full_name(attr_node):
                     # If we have a full name, we can process the call
-                    args, kwargs = extract_call_args_kwargs(node)
+                    args, kwargs = extract_call_args_kwargs(node, self.user_namespace)
                     self._process_api_call(full_name, args, kwargs)
             case _:
                 return None
@@ -232,7 +235,7 @@ class CallListener(cst.CSTVisitor):
                 )
                 self._caught_calls |= {func_name}
 
-    def _get_full_name(self, node: cst.CSTNode) -> str | None:
+    def _get_full_name(self, node: cst.CSTNode) -> str:
         """Recursively get the full name of a function or method call."""
         match node:
             case cst.Attribute(
@@ -246,7 +249,10 @@ class CallListener(cst.CSTVisitor):
                 assert isinstance(name, str), "Name node should have a string value"
                 return name
             case _:
-                return None
+                raise AssertionError(
+                    "Node does not match expected pattern. "
+                    "This should not happen, please report this as a bug."
+                )
 
 
 class ChainSimplifier(cst.CSTTransformer):
@@ -348,7 +354,13 @@ class ChainSimplifier(cst.CSTTransformer):
                 ],
             ) if (type_name := self._resolve_type(instance_name)) is not None:
                 args = self.user_namespace.get(args, args)
-                args = f"'{args}'"  # TODO: match on type here instead
+                match args:
+                    case int():
+                        mval = cst.Integer(value=f"{args}")
+                    case float():
+                        mval = cst.Float(value=f"{args}")
+                    case _:
+                        mval = cst.SimpleString(value=f"'{args}'")
                 return cst.Call(
                     func=cst.Attribute(
                         value=cst.Name(type_name),
@@ -356,7 +368,7 @@ class ChainSimplifier(cst.CSTTransformer):
                     ),
                     args=[
                         cst.Arg(
-                            value=cst.SimpleString(value=args)
+                            value=mval
                         ),  # TODO: so we can put the right value in here
                     ],
                 )
@@ -379,7 +391,7 @@ class ChainSimplifier(cst.CSTTransformer):
 
             func_name = inner_call.func.attr.value
 
-            args, kwargs = extract_call_args_kwargs(inner_call)
+            args, kwargs = extract_call_args_kwargs(inner_call, self.user_namespace)
 
             self._process_api_call(func_name, args, kwargs)
 
@@ -387,6 +399,17 @@ class ChainSimplifier(cst.CSTTransformer):
             # This effectively removes the search() call
             new_func = updated_node.func.with_changes(value=inner_call.func.value)
             return updated_node.with_changes(func=new_func)
+
+        match updated_node:
+            case cst.Call(
+                func=cst.Name(
+                    value=func_name,
+                )
+            ) if (instance := self.user_namespace.get(func_name, None)) is not None:
+                func_name = (
+                    instance.__name__
+                )  # Dealias if we've renamed it something else
+                return updated_node.with_changes(func=cst.Name(func_name))
 
         return updated_node
 

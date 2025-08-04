@@ -301,7 +301,7 @@ class ChainSimplifier(cst.CSTTransformer):
                     value=instance_name,
                 ),
                 attr=cst.Name(value=_),
-            ) if (type_name := self._resolve_type(instance_name)) is not None:
+            ) if (type_name := self._resolve_type(instance_name)) not in [None, "type"]:
                 return updated_node.with_changes(value=cst.Name(type_name))
             case cst.Attribute(
                 value=cst.Call(

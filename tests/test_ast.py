@@ -234,7 +234,6 @@ MyClass().func()
     }
 
 
-@pytest.mark.xfail
 def test_ast_class_method():
     """
     Class methods don't work with the CallListener yet
@@ -243,14 +242,10 @@ def test_ast_class_method():
     mock_info.raw_cell = """
 class MyClass:
     @classmethod
-    def class_func(cls):
-        self.set_var = set()
+    def func(cls):
+        cls.set_var = set()
 
-    def uncaught_func(self, *args, **kwargs):
-        pass
-
-
-MyClass.func(instance)
+MyClass.func()
 
 """
 
@@ -258,7 +253,7 @@ MyClass.func(instance)
     exec(mock_info.raw_cell, globals(), f.f_locals)
     mock_user_ns = f.f_locals
 
-    mock_registry = {"mock": ["MyClass.class_func"]}
+    mock_registry = {"mock": ["MyClass.func"]}
 
     mock_api_handler = MagicMock()
 
@@ -273,7 +268,7 @@ MyClass.func(instance)
     visitor._caught_calls |= reducer._caught_calls
 
     assert visitor._caught_calls == {
-        "MyClass.class_func",
+        "MyClass.func",
     }
 
 

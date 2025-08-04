@@ -303,6 +303,14 @@ class ChainSimplifier(cst.CSTTransformer):
                 attr=cst.Name(value=_),
             ) if (type_name := self._resolve_type(instance_name)) is not None:
                 return updated_node.with_changes(value=cst.Name(type_name))
+            case cst.Attribute(
+                value=cst.Call(
+                    func=cst.Name(
+                        value=_maybe_class_name,
+                    ),
+                )
+            ) if type(self.user_namespace.get(_maybe_class_name, None)) is type:
+                return updated_node.with_changes(value=cst.Name(_maybe_class_name))
 
             case _:
                 return updated_node
@@ -378,7 +386,9 @@ class ChainSimplifier(cst.CSTTransformer):
                     "This should not happen, please report this as a bug."
                 )
 
-    def leave_Call(self, original_node: cst.Call, updated_node: cst.Call) -> cst.Call:
+    def leave_Call(
+        self, original_node: cst.Call, updated_node: cst.Call
+    ) -> cst.Call | cst.Name:
         # Use matcher to identify the pattern: any_method(search_call(...))
         search_pattern = m.Call(
             func=m.Attribute(value=m.Call(func=m.Attribute(attr=m.Name("func"))))

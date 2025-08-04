@@ -196,7 +196,6 @@ reg_func()
     assert "uncaught_func" not in visitor._caught_calls
 
 
-@pytest.mark.xfail
 def test_ast_instantiate_and_call():
     """
     Need to figure out how to catch the instantiation of a class and then call a method
@@ -207,7 +206,6 @@ def test_ast_instantiate_and_call():
 class MyClass:
     def func(self):
         self.set_var = set()
-
 
 MyClass().func()
 

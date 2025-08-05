@@ -6,7 +6,6 @@ SPDX-License-Identifier: Apache-2.0
 
 from typing import Any
 import libcst as cst
-from ast import literal_eval, unparse
 from libcst._exceptions import ParserSyntaxError
 import re
 from IPython.core.getipython import get_ipython
@@ -81,7 +80,8 @@ def capture_registered_calls(info: ExecutionInfo) -> None:
         reducer = ChainSimplifier(user_namespace, REGISTRIES, api_handler)
         reduced_tree = tree.visit(reducer)
         visitor = CallListener(user_namespace, REGISTRIES, api_handler)
-        reduced_tree.visit(visitor)
+        wrapper = cst.MetadataWrapper(reduced_tree)
+        wrapper.visit(visitor)
         visitor._caught_calls = reducer._caught_calls
     except Exception:
         # Catch all exceptions to avoid breaking the execution
@@ -244,8 +244,6 @@ class CallListener(cst.CSTVisitor):
                 return None
             case str(), _:
                 self._process_api_call(full_name, [], {})
-            case _, _:
-                pass
         return None
 
     def visit_Call(self, node: cst.Call) -> None:
@@ -278,16 +276,6 @@ class CallListener(cst.CSTVisitor):
                     self._process_api_call(full_name, args, kwargs)
             case _:
                 return None
-
-    def safe_eval(self, node: cst.CSTNode) -> Any:
-        """Try to evaluate a node, or return the unparsed node if that fails."""
-        if not hasattr(node, "value"):
-            return unparse(node)  # type: ignore[arg-type]
-
-        try:
-            return literal_eval(node.value.value)
-        except (ValueError, SyntaxError):
-            return unparse(node.value.value)
 
     def _process_api_call(
         self, func_name: str, args: list[Any], kwargs: dict[str, Any]

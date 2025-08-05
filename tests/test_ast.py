@@ -3,11 +3,17 @@
 
 """Tests for the AST module"""
 
-import ast
+import libcst as cst
 import sys
 import pytest
-from access_py_telemetry.ast import CallListener, strip_magic, capture_registered_calls
+from access_py_telemetry.ast import (
+    CallListener,
+    ChainSimplifier,
+    strip_magic,
+    capture_registered_calls,
+)
 from unittest.mock import MagicMock
+from unittest.mock import call as unittest_call
 
 
 class MockInfo:
@@ -39,11 +45,15 @@ instance.uncaught_func()
 
     mock_api_handler = MagicMock()
 
-    tree = ast.parse(mock_info.raw_cell)
+    tree = cst.parse_module(mock_info.raw_cell)
+    reducer = ChainSimplifier(mock_user_ns, mock_registry, mock_api_handler)
+    reduced_tree = tree.visit(reducer)
+    wrapper = cst.MetadataWrapper(reduced_tree)
 
     visitor = CallListener(mock_user_ns, mock_registry, mock_api_handler)
+    wrapper.visit(visitor)
 
-    visitor.visit(tree)
+    visitor._caught_calls |= reducer._caught_calls
 
     assert visitor._caught_calls == {
         "MyClass.func",
@@ -52,19 +62,26 @@ instance.uncaught_func()
     assert "MyClass.uncaught_func" not in visitor._caught_calls
 
 
-def test_ast_bare_function():
+def test_ast_bare_function_args_kwargs():
     mock_info = MockInfo()
     mock_info.raw_cell = """
-def registered_func():
+def registered_func(*args, **kwargs):
     return None
 
-def unregistered_func():
-    return None
+x = 1
+y = "a_str"
+z = ["a", "list", 0, "random", ["values", "and", "types"]]
 
-registered_func()
-unregistered_func()
+registered_func(x, y=y, z=z)
 
 """
+
+    called_with = (
+        "mock",
+        "registered_func",
+        [1],
+        {"y": "a_str", "z": ["a", "list", 0, "random", ["values", "and", "types"]]},
+    )
 
     f = sys._getframe()
     exec(mock_info.raw_cell, globals(), f.f_locals)
@@ -74,17 +91,21 @@ unregistered_func()
 
     mock_api_handler = MagicMock()
 
-    tree = ast.parse(mock_info.raw_cell)
+    tree = cst.parse_module(mock_info.raw_cell)
+    reducer = ChainSimplifier(mock_user_ns, mock_registry, mock_api_handler)
+    reduced_tree = tree.visit(reducer)
+    wrapper = cst.MetadataWrapper(reduced_tree)
 
     visitor = CallListener(mock_user_ns, mock_registry, mock_api_handler)
+    wrapper.visit(visitor)
 
-    visitor.visit(tree)
+    visitor._caught_calls |= reducer._caught_calls
 
     assert visitor._caught_calls == {
         "registered_func",
     }
 
-    assert "uncaught_func" not in visitor._caught_calls
+    mock_api_handler.send_api_request.assert_called_once_with(*called_with)
 
 
 def test_ast_unparse_bare_function():
@@ -118,11 +139,15 @@ registered_func2(pd.DataFrame())
 
     mock_api_handler = MagicMock()
 
-    tree = ast.parse(mock_info.raw_cell)
+    tree = cst.parse_module(mock_info.raw_cell)
+    reducer = ChainSimplifier(mock_user_ns, mock_registry, mock_api_handler)
+    reduced_tree = tree.visit(reducer)
+    wrapper = cst.MetadataWrapper(reduced_tree)
 
     visitor = CallListener(mock_user_ns, mock_registry, mock_api_handler)
+    wrapper.visit(visitor)
 
-    visitor.visit(tree)
+    visitor._caught_calls |= reducer._caught_calls
 
     assert visitor._caught_calls == {
         "registered_func",
@@ -132,7 +157,6 @@ registered_func2(pd.DataFrame())
     assert "uncaught_func" not in visitor._caught_calls
 
 
-@pytest.mark.xfail
 def test_ast_aliased_function():
     """
     This will require more sophisticated analysis to catch aliased functions. Maybe
@@ -143,16 +167,9 @@ def test_ast_aliased_function():
 def registered_func():
     return None
 
-def unregistered_func():
-    return None
-
-
 reg_func = registered_func
 
 reg_func()
-
-unregistered_func()
-
 """
 
     f = sys._getframe()
@@ -163,20 +180,21 @@ unregistered_func()
 
     mock_api_handler = MagicMock()
 
-    tree = ast.parse(mock_info.raw_cell)
+    tree = cst.parse_module(mock_info.raw_cell)
+    reducer = ChainSimplifier(mock_user_ns, mock_registry, mock_api_handler)
+    reduced_tree = tree.visit(reducer)
+    wrapper = cst.MetadataWrapper(reduced_tree)
 
     visitor = CallListener(mock_user_ns, mock_registry, mock_api_handler)
+    wrapper.visit(visitor)
 
-    visitor.visit(tree)
+    visitor._caught_calls |= reducer._caught_calls
 
     assert visitor._caught_calls == {
         "registered_func",
     }
 
-    assert "uncaught_func" not in visitor._caught_calls
 
-
-@pytest.mark.xfail
 def test_ast_instantiate_and_call():
     """
     Need to figure out how to catch the instantiation of a class and then call a method
@@ -187,7 +205,6 @@ def test_ast_instantiate_and_call():
 class MyClass:
     def func(self):
         self.set_var = set()
-
 
 MyClass().func()
 
@@ -201,18 +218,21 @@ MyClass().func()
 
     mock_api_handler = MagicMock()
 
-    tree = ast.parse(mock_info.raw_cell)
+    tree = cst.parse_module(mock_info.raw_cell)
+    reducer = ChainSimplifier(mock_user_ns, mock_registry, mock_api_handler)
+    reduced_tree = tree.visit(reducer)
+    wrapper = cst.MetadataWrapper(reduced_tree)
 
     visitor = CallListener(mock_user_ns, mock_registry, mock_api_handler)
+    wrapper.visit(visitor)
 
-    visitor.visit(tree)
+    visitor._caught_calls |= reducer._caught_calls
 
     assert visitor._caught_calls == {
         "MyClass.func",
     }
 
 
-@pytest.mark.xfail
 def test_ast_class_method():
     """
     Class methods don't work with the CallListener yet
@@ -221,14 +241,10 @@ def test_ast_class_method():
     mock_info.raw_cell = """
 class MyClass:
     @classmethod
-    def class_func(cls):
-        self.set_var = set()
+    def func(cls):
+        cls.set_var = set()
 
-    def uncaught_func(self, *args, **kwargs):
-        pass
-
-
-MyClass.func(instance)
+MyClass.func()
 
 """
 
@@ -236,18 +252,22 @@ MyClass.func(instance)
     exec(mock_info.raw_cell, globals(), f.f_locals)
     mock_user_ns = f.f_locals
 
-    mock_registry = {"mock": ["MyClass.class_func"]}
+    mock_registry = {"mock": ["MyClass.func"]}
 
     mock_api_handler = MagicMock()
 
-    tree = ast.parse(mock_info.raw_cell)
+    tree = cst.parse_module(mock_info.raw_cell)
+    reducer = ChainSimplifier(mock_user_ns, mock_registry, mock_api_handler)
+    reduced_tree = tree.visit(reducer)
+    wrapper = cst.MetadataWrapper(reduced_tree)
 
     visitor = CallListener(mock_user_ns, mock_registry, mock_api_handler)
+    wrapper.visit(visitor)
 
-    visitor.visit(tree)
+    visitor._caught_calls |= reducer._caught_calls
 
     assert visitor._caught_calls == {
-        "MyClass.class_func",
+        "MyClass.func",
     }
 
 
@@ -278,11 +298,15 @@ l[0]
 
     mock_api_handler = MagicMock()
 
-    tree = ast.parse(mock_info.raw_cell)
+    tree = cst.parse_module(mock_info.raw_cell)
+    reducer = ChainSimplifier(mock_user_ns, mock_registry, mock_api_handler)
+    reduced_tree = tree.visit(reducer)
+    wrapper = cst.MetadataWrapper(reduced_tree)
 
     visitor = CallListener(mock_user_ns, mock_registry, mock_api_handler)
+    wrapper.visit(visitor)
 
-    visitor.visit(tree)
+    visitor._caught_calls |= reducer._caught_calls
 
     assert visitor._caught_calls == {
         "MyClass.__getitem__",
@@ -307,11 +331,15 @@ os.path.join("some","paths")
 
     mock_api_handler = MagicMock()
 
-    tree = ast.parse(mock_info.raw_cell)
+    tree = cst.parse_module(mock_info.raw_cell)
+    reducer = ChainSimplifier(mock_user_ns, mock_registry, mock_api_handler)
+    reduced_tree = tree.visit(reducer)
+    wrapper = cst.MetadataWrapper(reduced_tree)
 
     visitor = CallListener(mock_user_ns, mock_registry, mock_api_handler)
+    wrapper.visit(visitor)
 
-    visitor.visit(tree)
+    visitor._caught_calls |= reducer._caught_calls
 
     assert visitor._caught_calls == {
         "os.path.join",
@@ -335,11 +363,15 @@ operating_system.path.join("some","paths")
 
     mock_api_handler = MagicMock()
 
-    tree = ast.parse(mock_info.raw_cell)
+    tree = cst.parse_module(mock_info.raw_cell)
+    reducer = ChainSimplifier(mock_user_ns, mock_registry, mock_api_handler)
+    reduced_tree = tree.visit(reducer)
+    wrapper = cst.MetadataWrapper(reduced_tree)
 
     visitor = CallListener(mock_user_ns, mock_registry, mock_api_handler)
+    wrapper.visit(visitor)
 
-    visitor.visit(tree)
+    visitor._caught_calls |= reducer._caught_calls
 
     assert visitor._caught_calls == {
         "os.path.join",
@@ -364,7 +396,7 @@ search_str = 'some_item'
 
 mycall = instance[search_str] 
 """,
-            ("mock", "MyClass.__getitem__", ["some_item"], {}),
+            ("mock", "MyClass.__getitem__", ["'some_item'"], {}),
         ),
         (
             """
@@ -380,6 +412,16 @@ instance = MyClass()
 mycall = instance['directly_used_string'] 
 """,
             ("mock", "MyClass.__getitem__", ["'directly_used_string'"], {}),
+        ),
+        (
+            """
+l = [0,1,2,3]
+
+MAGIC_NUMBER = 1
+
+l[MAGIC_NUMBER]
+""",
+            ("mock", "list.__getitem__", ["1"], {}),
         ),
     ],
 )
@@ -404,11 +446,15 @@ def test_ast_aliased_index(raw_cell, called_with):
 
     mock_api_handler = MagicMock()
 
-    tree = ast.parse(mock_info.raw_cell)
+    tree = cst.parse_module(mock_info.raw_cell)
+    reducer = ChainSimplifier(mock_user_ns, mock_registry, mock_api_handler)
+    reduced_tree = tree.visit(reducer)
+    wrapper = cst.MetadataWrapper(reduced_tree)
 
     visitor = CallListener(mock_user_ns, mock_registry, mock_api_handler)
+    wrapper.visit(visitor)
 
-    visitor.visit(tree)
+    visitor._caught_calls |= reducer._caught_calls
 
     mock_api_handler.send_api_request.assert_called_once_with(*called_with)
 
@@ -429,11 +475,15 @@ intake.cat.access_nri
 
     mock_api_handler = MagicMock()
 
-    tree = ast.parse(mock_info.raw_cell)
+    tree = cst.parse_module(mock_info.raw_cell)
+    reducer = ChainSimplifier(mock_user_ns, mock_registry, mock_api_handler)
+    reduced_tree = tree.visit(reducer)
+    wrapper = cst.MetadataWrapper(reduced_tree)
 
     visitor = CallListener(mock_user_ns, mock_registry, mock_api_handler)
+    wrapper.visit(visitor)
 
-    visitor.visit(tree)
+    visitor._caught_calls |= reducer._caught_calls
 
     assert visitor._caught_calls == {
         "intake.cat.access_nri",
@@ -456,11 +506,15 @@ cat = intake.cat.access_nri
 
     mock_api_handler = MagicMock()
 
-    tree = ast.parse(mock_info.raw_cell)
+    tree = cst.parse_module(mock_info.raw_cell)
+    reducer = ChainSimplifier(mock_user_ns, mock_registry, mock_api_handler)
+    reduced_tree = tree.visit(reducer)
+    wrapper = cst.MetadataWrapper(reduced_tree)
 
     visitor = CallListener(mock_user_ns, mock_registry, mock_api_handler)
+    wrapper.visit(visitor)
 
-    visitor.visit(tree)
+    visitor._caught_calls |= reducer._caught_calls
 
     assert visitor._caught_calls == {
         "intake.cat.access_nri",
@@ -488,11 +542,15 @@ intake.cat.access_nri
 
     mock_api_handler = MagicMock()
 
-    tree = ast.parse(mock_info.raw_cell)
+    tree = cst.parse_module(mock_info.raw_cell)
+    reducer = ChainSimplifier(mock_user_ns, mock_registry, mock_api_handler)
+    reduced_tree = tree.visit(reducer)
+    wrapper = cst.MetadataWrapper(reduced_tree)
 
     visitor = CallListener(mock_user_ns, mock_registry, mock_api_handler)
+    wrapper.visit(visitor)
 
-    visitor.visit(tree)
+    visitor._caught_calls |= reducer._caught_calls
 
     assert visitor._caught_calls == {
         "intake.cat.access_nri",
@@ -543,9 +601,9 @@ MyClass.func(instance)
 
     assert parsed_w_magic == parsed_wo_magic
 
-    a = ast.dump(ast.parse(parsed_w_magic), annotate_fields=False)
-    b = ast.dump(ast.parse(parsed_wo_magic), annotate_fields=False)
-    assert a == b
+    tree_w_magic = cst.parse_module(parsed_w_magic)
+    tree_wo_magic = cst.parse_module(parsed_wo_magic)
+    assert tree_w_magic.deep_equals(tree_wo_magic)
 
 
 def test_parse_invalid_code():
@@ -608,10 +666,178 @@ arr.mean()
 
     mock_api_handler = MagicMock()
 
-    tree = ast.parse(mock_info.raw_cell)
+    tree = cst.parse_module(mock_info.raw_cell)
+    reducer = ChainSimplifier(mock_user_ns, mock_registry, mock_api_handler)
+    reduced_tree = tree.visit(reducer)
+    wrapper = cst.MetadataWrapper(reduced_tree)
 
     visitor = CallListener(mock_user_ns, mock_registry, mock_api_handler)
+    wrapper.visit(visitor)
 
-    visitor.visit(tree)
+    visitor._caught_calls |= reducer._caught_calls
 
     assert visitor._caught_calls == {"ndarray.mean"}
+
+
+def test_ChainSimplifier_instance_to_classname():
+    """
+    Test that the ChainSimplifier correctly converts instance method calls to class names.
+    """
+    mock_info = MockInfo()
+    mock_info.raw_cell = """
+class MyClass:
+    def __init__(self):
+        self.a = "value"
+
+    def func1(self):
+        return self
+
+    def func2(self):
+        return self
+
+instance = MyClass()
+instance.func1().func2() # These should be popped out by the ChainSimplifier
+
+instance.a
+"""
+
+    transformed_cell = """
+class MyClass:
+    def __init__(self):
+        self.a = "value"
+
+    def func1(self):
+        return self
+
+    def func2(self):
+        return self
+
+instance = MyClass()
+MyClass # These should be popped out by the ChainSimplifier
+
+MyClass.a
+"""
+    f = sys._getframe()
+    exec(mock_info.raw_cell, globals(), f.f_locals)
+    mock_user_ns = f.f_locals
+
+    mock_registry = {"mock": ["ndarray.mean"]}
+
+    mock_api_handler = MagicMock()
+
+    tree = cst.parse_module(mock_info.raw_cell)
+    reducer = ChainSimplifier(mock_user_ns, mock_registry, mock_api_handler)
+    reduced_tree = tree.visit(reducer)
+
+    code = reduced_tree.code
+
+    assert code == transformed_cell
+
+
+def test_ChainSimplifier_indexing():
+    mock_info = MockInfo()
+    mock_info.raw_cell = """
+l = [1, 2, 3]
+
+l[0]
+    """
+
+    transformed_cell = """
+l = [1, 2, 3]
+
+list.__getitem__(0)
+    """
+
+    f = sys._getframe()
+    exec(mock_info.raw_cell, globals(), f.f_locals)
+    mock_user_ns = f.f_locals
+
+    mock_registry = {"mock": ["ndarray.mean"]}
+
+    mock_api_handler = MagicMock()
+
+    tree = cst.parse_module(mock_info.raw_cell)
+    reducer = ChainSimplifier(mock_user_ns, mock_registry, mock_api_handler)
+    reduced_tree = tree.visit(reducer)
+
+    code = reduced_tree.code
+
+    assert code == transformed_cell
+
+
+@pytest.mark.parametrize(
+    "raw_cell, called_with",
+    [
+        (
+            """
+# Mock the esm_datastore instead of creating it from a file
+class esm_datastore:
+    def search(self, **kwargs):
+        return self
+    
+    def to_dask(self, **kwargs) -> None:
+        return None
+
+esm_ds = esm_datastore()
+
+time = '2023-01-01'
+
+ds = esm_ds.search(
+    file_id='xyz'
+).search(
+    start_date=time
+).to_dask(
+    xarray_open_kwargs = {'chunks' : 'auto'}
+)
+""",
+            [
+                ("mock", "esm_datastore.search", [], {"file_id": "'xyz'"}),
+                ("mock", "esm_datastore.search", [], {"start_date": "2023-01-01"}),
+                (
+                    "mock",
+                    "esm_datastore.to_dask",
+                    [],
+                    {"xarray_open_kwargs": {"chunks": "auto"}},
+                ),
+            ],
+        ),
+    ],
+)
+def test_chained_function_call(raw_cell, called_with):
+    """
+    This is going to be our most 'real life' test. We want to make sure that
+    something like `esm_datastore.search(file_id='xyz').search(start_date=time).to_dask()`
+    is properly caught and the calls are registered correctly - and in the right
+    order.
+    """
+
+    mock_info = MockInfo()
+    mock_info.raw_cell = raw_cell
+    f = sys._getframe()
+    exec(mock_info.raw_cell, globals(), f.f_locals)
+    mock_user_ns = f.f_locals
+
+    mock_registry = {"mock": ["esm_datastore.search", "esm_datastore.to_dask"]}
+
+    mock_api_handler = MagicMock()
+
+    tree = cst.parse_module(mock_info.raw_cell)
+    reducer = ChainSimplifier(mock_user_ns, mock_registry, mock_api_handler)
+    reduced_tree = tree.visit(reducer)
+    wrapper = cst.MetadataWrapper(reduced_tree)
+
+    visitor = CallListener(mock_user_ns, mock_registry, mock_api_handler)
+    wrapper.visit(visitor)
+
+    visitor._caught_calls |= reducer._caught_calls
+
+    assert visitor._caught_calls == {
+        "esm_datastore.search",
+        "esm_datastore.to_dask",
+    }
+
+    assert mock_api_handler.send_api_request.call_count == 3
+
+    mock_api_handler.send_api_request.assert_has_calls(
+        [unittest_call(*call) for call in called_with],
+    )

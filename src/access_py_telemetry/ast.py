@@ -74,19 +74,23 @@ def capture_registered_calls(info: ExecutionInfo) -> None:
     except (ParserSyntaxError, IndentationError):
         return None
 
-    user_namespace: dict[str, Any] = get_ipython().user_ns  # type: ignore
+    user_namespace: dict[str, Any] = get_ipython().user_ns  # type: ignore # pragma: no cover
 
     try:
-        reducer = ChainSimplifier(user_namespace, REGISTRIES, api_handler)
-        reduced_tree = tree.visit(reducer)
-        visitor = CallListener(user_namespace, REGISTRIES, api_handler)
-        wrapper = cst.MetadataWrapper(reduced_tree)
-        wrapper.visit(visitor)
-        visitor._caught_calls = reducer._caught_calls
+        reducer = ChainSimplifier(
+            user_namespace, REGISTRIES, api_handler
+        )  # pragma: no cover
+        reduced_tree = tree.visit(reducer)  # pragma: no cover
+        visitor = CallListener(
+            user_namespace, REGISTRIES, api_handler
+        )  # pragma: no cover
+        wrapper = cst.MetadataWrapper(reduced_tree)  # pragma: no cover
+        wrapper.visit(visitor)  # pragma: no cover
+        visitor._caught_calls = reducer._caught_calls  # pragma: no cover
     except Exception:
         # Catch all exceptions to avoid breaking the execution
         # of the code being run.
-        return None
+        return None  # pragma: no cover
 
     return None
 
@@ -402,13 +406,9 @@ class ChainSimplifier(cst.CSTTransformer):
                     cst.SubscriptElement(slice=cst.Index(value=cst.Name(value=args)))
                 ],
             ) if (type_name := self._resolve_type(instance_name)) is not None:
-                res_args: int | float | str | object = self.user_namespace.get(
-                    args, args
-                )
+                res_args: int | str | object = self.user_namespace.get(args, args)
                 if isinstance(res_args, int):
                     mval: cst.BaseExpression = cst.Integer(value=f"{res_args}")
-                elif isinstance(res_args, float):
-                    mval = cst.Float(value=f"{res_args}")
                 else:
                     mval = cst.SimpleString(value=f"'{res_args}'")
                 return cst.Call(

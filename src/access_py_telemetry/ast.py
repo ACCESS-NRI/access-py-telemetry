@@ -274,8 +274,6 @@ class CallListener(cst.CSTVisitor):
                     # If we have a full name, we can process the call
                     args, kwargs = extract_call_args_kwargs(node, self.user_namespace)
                     self._process_api_call(full_name, args, kwargs)
-            case _:
-                return None
 
     def _process_api_call(
         self, func_name: str, args: list[Any], kwargs: dict[str, Any]
@@ -480,10 +478,6 @@ class ChainSimplifier(cst.CSTTransformer):
                     kwargs,
                 )
                 self._caught_calls |= {func_name}
-
-    def _get_full_name(self, node: cst.CSTNode) -> str:
-        """Recursively get the full name of a function or method call."""
-        return _get_full_name(node)
 
 
 def _get_full_name(node: cst.CSTNode) -> str:

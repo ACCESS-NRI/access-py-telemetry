@@ -74,34 +74,34 @@ def capture_registered_calls(info: ExecutionInfo) -> None:
     except (ParserSyntaxError, IndentationError):
         return None
 
-    user_namespace: dict[str, Any] = get_ipython().user_ns  # type: ignore # pragma: no cover
-
-    try:
-        reducer = ChainSimplifier(
-            user_namespace, REGISTRIES, api_handler
-        )  # pragma: no cover
-        reduced_tree = tree.visit(reducer)  # pragma: no cover
-        visitor = CallListener(
-            user_namespace, REGISTRIES, api_handler
-        )  # pragma: no cover
-        wrapper = cst.MetadataWrapper(reduced_tree)  # pragma: no cover
-        wrapper.visit(visitor)  # pragma: no cover
-        visitor._caught_calls = reducer._caught_calls  # pragma: no cover
-    except Exception:
-        # Catch all exceptions to avoid breaking the execution
-        # of the code being run.
-        return None  # pragma: no cover
+    _run_tree(tree)
 
     return None
 
 
+def _run_tree(tree: cst.Module) -> None:  # pragma: no cover
+    user_namespace: dict[str, Any] = get_ipython().user_ns  # type: ignore
+
+    try:
+        reducer = ChainSimplifier(user_namespace, REGISTRIES, api_handler)
+        reduced_tree = tree.visit(reducer)
+        visitor = CallListener(user_namespace, REGISTRIES, api_handler)
+        wrapper = cst.MetadataWrapper(reduced_tree)
+        wrapper.visit(visitor)
+        visitor._caught_calls = reducer._caught_calls
+    except Exception:
+        # Catch all exceptions to avoid breaking the execution
+        # of the code being run.
+        return None
+
+
 def extract_call_args_kwargs(
     node: cst.Call, user_ns: dict[str, Any]
-) -> tuple[list[Any], dict[str, Any]]:
+) -> tuple[list[Any], dict[str, Any]]:  # pragma: no cover
     """
     Take a cst Call Node and extract the args and kwargs, into a tuple of (args, kwargs)
 
-    # TODO: This matcher is a mess
+    # TODO: This matcher is a mess, and lacks test coverage.
     - Add support for f-strings
     """
     args: list[str | dict[str, Any]] = []
@@ -173,7 +173,6 @@ def extract_call_args_kwargs(
                 value=cst.Dict() as dict_node,
                 keyword=None,
             ):
-                # Dictionary as positional argument
                 dict_value = _extract_dict_value(dict_node)
                 args.append(dict_value)
             case cst.Arg(
@@ -200,7 +199,6 @@ def extract_call_args_kwargs(
                 value=cst.Dict() as dict_node,
                 keyword=cst.Name(value=key),
             ):
-                # Dictionary as keyword argument
                 dict_value = _extract_dict_value(dict_node)
                 kwargs[key] = dict_value
             case _:
@@ -209,7 +207,7 @@ def extract_call_args_kwargs(
     return args, kwargs
 
 
-def format_args(args: list[Any], kwargs: dict[str, Any]) -> str:
+def format_args(args: list[Any], kwargs: dict[str, Any]) -> str:  # pragma: no cover
     """
     Format args and kwargs into a string representation
     """
@@ -422,11 +420,11 @@ class ChainSimplifier(cst.CSTTransformer):
                         ),  # TODO: so we can put the right value in here
                     ],
                 )
-            case _:
+            case _:  # pragma: no cover
                 raise AssertionError(
                     "Subscript node does not match expected pattern. "
                     "This should not happen, please report this as a bug."
-                )
+                )  # pragma: no cover
 
     def leave_Call(
         self, original_node: cst.Call, updated_node: cst.Call
@@ -493,8 +491,8 @@ def _get_full_name(node: cst.CSTNode) -> str:
             # If the node is a name, we return the name
             assert isinstance(name, str), "Name node should have a string value"
             return name
-        case _:
+        case _:  # pragma: no cover
             raise AssertionError(
                 "Node does not match expected pattern. "
                 "This should not happen, please report this as a bug."
-            )
+            )  # pragma: no cover

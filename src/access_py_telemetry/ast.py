@@ -88,7 +88,7 @@ def _run_tree(tree: cst.Module) -> None:  # pragma: no cover
         visitor = CallListener(user_namespace, REGISTRIES, api_handler)
         wrapper = cst.MetadataWrapper(reduced_tree)
         wrapper.visit(visitor)
-        visitor._caught_calls = reducer._caught_calls
+        visitor._caught_calls |= reducer._caught_calls
     except Exception:
         # Catch all exceptions to avoid breaking the execution
         # of the code being run.
@@ -167,8 +167,8 @@ def extract_call_args_kwargs(
                 value=cst.Name(value=val),
                 keyword=None,
             ):
-                if val := user_ns.get(val, None):
-                    args.append(val)
+                if resolved_val := user_ns.get(val, None):
+                    args.append(resolved_val)
             case cst.Arg(
                 value=cst.Dict() as dict_node,
                 keyword=None,
@@ -183,18 +183,11 @@ def extract_call_args_kwargs(
             ):
                 kwargs[key] = val
             case cst.Arg(
-                value=cst.SimpleString(value=val)
-                | cst.Float(value=val)
-                | cst.Integer(value=val),
-                keyword=cst.Name(value=key),
-            ):
-                kwargs[key] = val
-            case cst.Arg(
                 cst.Name(value=val),
                 keyword=cst.Name(value=key),
             ):
-                if val := user_ns.get(val, None):  # type: ignore[arg-type]
-                    kwargs[key] = val
+                if resolved_val := user_ns.get(val, None):
+                    kwargs[key] = resolved_val
             case cst.Arg(
                 value=cst.Dict() as dict_node,
                 keyword=cst.Name(value=key),

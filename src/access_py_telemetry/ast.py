@@ -8,7 +8,6 @@ from typing import Any
 import libcst as cst
 from ast import literal_eval, unparse
 from libcst._exceptions import ParserSyntaxError
-import libcst.matchers as m
 import re
 from IPython.core.getipython import get_ipython
 from IPython.core.interactiveshell import ExecutionInfo
@@ -101,8 +100,56 @@ def extract_call_args_kwargs(
     # TODO: This matcher is a mess
     - Add support for f-strings
     """
-    args = []
-    kwargs = {}
+    args: list[str | dict[str, Any]] = []
+    kwargs: dict[str, Any] = {}
+
+    def _extract_dict_value(dict_node: cst.Dict) -> dict[str, str]:
+        """Extract dictionary values from a cst.Dict node using pattern matching"""
+        result = {}
+        for element in dict_node.elements:
+            match element:
+                case cst.DictElement(
+                    key=cst.SimpleString(value=key_val),
+                    value=cst.SimpleString(value=val),
+                ):
+                    key = key_val.strip("'\"")
+                    value = val.strip("'\"")
+                    result[key] = value
+                case cst.DictElement(
+                    key=cst.SimpleString(value=key_val),
+                    value=cst.Integer(value=val) | cst.Float(value=val),
+                ):
+                    key = key_val.strip("'\"")
+                    result[key] = val
+                case cst.DictElement(
+                    key=cst.SimpleString(value=key_val), value=cst.Name(value=val)
+                ):
+                    key = key_val.strip("'\"")
+                    value = user_ns.get(val, val)
+                    result[key] = value
+                case cst.DictElement(
+                    key=cst.Name(value=key_val), value=cst.SimpleString(value=val)
+                ):
+                    key = user_ns.get(key_val, key_val)
+                    value = val.strip("'\"")
+                    result[key] = value
+                case cst.DictElement(
+                    key=cst.Name(value=key_val),
+                    value=cst.Integer(value=val) | cst.Float(value=val),
+                ):
+                    key = user_ns.get(key_val, key_val)
+                    result[key] = val
+                case cst.DictElement(
+                    key=cst.Name(value=key_val), value=cst.Name(value=val)
+                ):
+                    key = user_ns.get(key_val, key_val)
+                    value = user_ns.get(val, val)
+                    result[key] = value
+                case _:
+                    # Skip unsupported dict element types
+                    continue
+        return result
+
     for arg in node.args:
         match arg:
             case cst.Arg(
@@ -116,8 +163,22 @@ def extract_call_args_kwargs(
                 value=cst.Name(value=val),
                 keyword=None,
             ):
-                if val := user_ns.get(val, None):  # type: ignore[arg-type]
+                if val := user_ns.get(val, None):
                     args.append(val)
+            case cst.Arg(
+                value=cst.Dict() as dict_node,
+                keyword=None,
+            ):
+                # Dictionary as positional argument
+                dict_value = _extract_dict_value(dict_node)
+                args.append(dict_value)
+            case cst.Arg(
+                value=cst.SimpleString(value=val)
+                | cst.Float(value=val)
+                | cst.Integer(value=val),
+                keyword=cst.Name(value=key),
+            ):
+                kwargs[key] = val
             case cst.Arg(
                 value=cst.SimpleString(value=val)
                 | cst.Float(value=val)
@@ -131,6 +192,13 @@ def extract_call_args_kwargs(
             ):
                 if val := user_ns.get(val, None):  # type: ignore[arg-type]
                     kwargs[key] = val
+            case cst.Arg(
+                value=cst.Dict() as dict_node,
+                keyword=cst.Name(value=key),
+            ):
+                # Dictionary as keyword argument
+                dict_value = _extract_dict_value(dict_node)
+                kwargs[key] = dict_value
             case _:
                 return args, kwargs
 
@@ -237,22 +305,7 @@ class CallListener(cst.CSTVisitor):
 
     def _get_full_name(self, node: cst.CSTNode) -> str:
         """Recursively get the full name of a function or method call."""
-        match node:
-            case cst.Attribute(
-                value=base_name,
-                attr=cst.Name(value=attr_name),
-            ):
-                # If the node is an attribute, we need to repeat to get the full name
-                return f"{self._get_full_name(base_name)}.{attr_name}"
-            case cst.Name(value=name):
-                # If the node is a name, we return the name
-                assert isinstance(name, str), "Name node should have a string value"
-                return name
-            case _:
-                raise AssertionError(
-                    "Node does not match expected pattern. "
-                    "This should not happen, please report this as a bug."
-                )
+        return _get_full_name(node)
 
 
 class ChainSimplifier(cst.CSTTransformer):
@@ -393,25 +446,6 @@ class ChainSimplifier(cst.CSTTransformer):
         self, original_node: cst.Call, updated_node: cst.Call
     ) -> cst.Call | cst.Name:
         # Use matcher to identify the pattern: any_method(search_call(...))
-        search_pattern = m.Call(
-            func=m.Attribute(value=m.Call(func=m.Attribute(attr=m.Name("func"))))
-        )
-
-        if m.matches(updated_node, search_pattern):
-            # Extract the method name and inner call
-
-            inner_call = updated_node.func.value  # type: ignore[attr-defined]
-
-            func_name = inner_call.func.attr.value
-
-            args, kwargs = extract_call_args_kwargs(inner_call, self.user_namespace)
-
-            self._process_api_call(func_name, args, kwargs)
-
-            # Replace the value with the inner call's value
-            # This effectively removes the search() call
-            new_func = updated_node.func.with_changes(value=inner_call.func.value)
-            return updated_node.with_changes(func=new_func)
 
         match updated_node:
             case cst.Call(
@@ -423,6 +457,25 @@ class ChainSimplifier(cst.CSTTransformer):
                     instance.__name__
                 )  # Dealias if we've renamed it something else
                 return updated_node.with_changes(func=cst.Name(func_name))
+            case cst.Call(
+                func=cst.Attribute(
+                    value=cst.Name(value=base_name),
+                    attr=cst.Name(
+                        value=attr_name,
+                    ),
+                )
+            ):  # TODO: check that we return self here or don't do anything
+                args, kwargs = extract_call_args_kwargs(
+                    updated_node, self.user_namespace
+                )
+                full_name = f"{base_name}.{attr_name}"
+                self._process_api_call(full_name, args, kwargs)
+                # Then pop that attribute access out of the chain
+                return cst.Name(
+                    value=base_name,
+                )
+            case _:
+                pass
 
         return updated_node
 
@@ -439,3 +492,27 @@ class ChainSimplifier(cst.CSTTransformer):
                     kwargs,
                 )
                 self._caught_calls |= {func_name}
+
+    def _get_full_name(self, node: cst.CSTNode) -> str:
+        """Recursively get the full name of a function or method call."""
+        return _get_full_name(node)
+
+
+def _get_full_name(node: cst.CSTNode) -> str:
+    """Recursively get the full name of a function or method call."""
+    match node:
+        case cst.Attribute(
+            value=base_name,
+            attr=cst.Name(value=attr_name),
+        ):
+            # If the node is an attribute, we need to repeat to get the full name
+            return f"{_get_full_name(base_name)}.{attr_name}"
+        case cst.Name(value=name):
+            # If the node is a name, we return the name
+            assert isinstance(name, str), "Name node should have a string value"
+            return name
+        case _:
+            raise AssertionError(
+                "Node does not match expected pattern. "
+                "This should not happen, please report this as a bug."
+            )

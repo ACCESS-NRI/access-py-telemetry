@@ -13,6 +13,7 @@ from access_py_telemetry.ast import (
     capture_registered_calls,
 )
 from unittest.mock import MagicMock
+from unittest.mock import call as unittest_call
 
 
 class MockInfo:
@@ -192,8 +193,6 @@ reg_func()
     assert visitor._caught_calls == {
         "registered_func",
     }
-
-    assert "uncaught_func" not in visitor._caught_calls
 
 
 def test_ast_instantiate_and_call():
@@ -697,7 +696,7 @@ class MyClass:
         return self
 
 instance = MyClass()
-instance.func1().func2()
+instance.func1().func2() # These should be popped out by the ChainSimplifier
 
 instance.a
 """
@@ -714,7 +713,7 @@ class MyClass:
         return self
 
 instance = MyClass()
-MyClass.func1().func2()
+MyClass # These should be popped out by the ChainSimplifier
 
 MyClass.a
 """
@@ -764,3 +763,81 @@ list.__getitem__(0)
     code = reduced_tree.code
 
     assert code == transformed_cell
+
+
+@pytest.mark.parametrize(
+    "raw_cell, called_with",
+    [
+        (
+            """
+# Mock the esm_datastore instead of creating it from a file
+class esm_datastore:
+    def search(self, **kwargs):
+        return self
+    
+    def to_dask(self, **kwargs) -> None:
+        return None
+
+esm_ds = esm_datastore()
+
+time = '2023-01-01'
+
+ds = esm_ds.search(
+    file_id='xyz'
+).search(
+    start_date=time
+).to_dask(
+    xarray_open_kwargs = {'chunks' : 'auto'}
+)
+""",
+            [
+                ("mock", "esm_datastore.search", [], {"file_id": "'xyz'"}),
+                ("mock", "esm_datastore.search", [], {"start_date": "2023-01-01"}),
+                (
+                    "mock",
+                    "esm_datastore.to_dask",
+                    [],
+                    {"xarray_open_kwargs": {"chunks": "auto"}},
+                ),
+            ],
+        ),
+    ],
+)
+def test_chained_function_call(raw_cell, called_with):
+    """
+    This is going to be our most 'real life' test. We want to make sure that
+    something like `esm_datastore.search(file_id='xyz').search(start_date=time).to_dask()`
+    is properly caught and the calls are registered correctly - and in the right
+    order.
+    """
+
+    mock_info = MockInfo()
+    mock_info.raw_cell = raw_cell
+    f = sys._getframe()
+    exec(mock_info.raw_cell, globals(), f.f_locals)
+    mock_user_ns = f.f_locals
+
+    mock_registry = {"mock": ["esm_datastore.search", "esm_datastore.to_dask"]}
+
+    mock_api_handler = MagicMock()
+
+    tree = cst.parse_module(mock_info.raw_cell)
+    reducer = ChainSimplifier(mock_user_ns, mock_registry, mock_api_handler)
+    reduced_tree = tree.visit(reducer)
+    wrapper = cst.MetadataWrapper(reduced_tree)
+
+    visitor = CallListener(mock_user_ns, mock_registry, mock_api_handler)
+    wrapper.visit(visitor)
+
+    visitor._caught_calls |= reducer._caught_calls
+
+    assert visitor._caught_calls == {
+        "esm_datastore.search",
+        "esm_datastore.to_dask",
+    }
+
+    assert mock_api_handler.send_api_request.call_count == 3
+
+    mock_api_handler.send_api_request.assert_has_calls(
+        [unittest_call(*call) for call in called_with],
+    )

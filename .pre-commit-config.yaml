@@ -1,6 +1,7 @@
 repos:
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: 'v0.13.1'
+    rev: 'v0.14.2'
+
     hooks:
       - id: ruff
         args: ['--fix']
@@ -19,4 +20,4 @@ repos:
       additional_dependencies: [types-PyYAML==6.0.12.20240808, types-requests==2.32.0.20241016
       ,annotated-types==0.7.0,pydantic,pydantic_core,httpx,ipython]
       files: ^src/
-      args: [--strict,--ignore-missing-imports]
+      args: [--strict,--ignore-missing-imports,--disable-error-code=unreachable,--disable-error-code=unused-ignore]

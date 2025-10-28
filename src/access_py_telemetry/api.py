@@ -359,7 +359,7 @@ class ApiHandler:
         aren't. I've also modified __get__, so SessionID() evaluates to a string.
         """
         telemetry_data = {
-            "name": getpass.getuser(),  # Until we work out the privacy policy nightmare
+            "name": getpass.getuser(),
             "function": function_name,
             "args": args,
             "kwargs": kwargs,

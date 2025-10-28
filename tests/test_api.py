@@ -12,6 +12,7 @@ from access_py_telemetry.api import (
     _format_endpoint,
     _run_event_loop,
 )
+from unittest import mock
 from pydantic import ValidationError
 import pytest
 from pytest_httpserver import HTTPServer, RequestMatcher
@@ -176,7 +177,8 @@ def test_api_handler_remove_fields(api_handler):
     api_handler.remove_fields("payu", "model")
 
 
-def test_api_handler_send_api_request(api_handler, capfd):
+@mock.patch("access_py_telemetry.api.getpass.getuser")
+def test_api_handler_send_api_request(mock_getuser, api_handler, capfd):
     """
     Create and send an API request with telemetry data - just to make sure that
     the request is being sent correctly.
@@ -186,6 +188,8 @@ def test_api_handler_send_api_request(api_handler, capfd):
     # that changes the server url to the staging server
     api_handler.server_url = "http://dud/host/endpoint"
 
+    # Set the username to `test_username` for testing purposes
+    mock_getuser.return_value = "test_username"
     # Pretend we only have catalog & payu services and then mock the initialisation
     # of the _extra_fields attribute
 
@@ -215,6 +219,7 @@ def test_api_handler_send_api_request(api_handler, capfd):
         "kwargs": {"random": "item"},
         "model": "ACCESS-OM2",
         "random_number": 2,
+        "name": "test_username",
     }
 
 

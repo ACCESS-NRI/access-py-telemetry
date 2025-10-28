@@ -6,6 +6,7 @@ SPDX-License-Identifier: Apache-2.0
 from functools import wraps
 import sys
 from typing import Any, Type, Iterable, Callable
+import getpass
 import warnings
 import platform
 import uuid
@@ -358,7 +359,7 @@ class ApiHandler:
         aren't. I've also modified __get__, so SessionID() evaluates to a string.
         """
         telemetry_data = {
-            # "name": getpass.getuser(), # Until we work out the privacy policy nightmare
+            "name": getpass.getuser(),  # Until we work out the privacy policy nightmare
             "function": function_name,
             "args": args,
             "kwargs": kwargs,

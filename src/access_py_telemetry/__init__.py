@@ -15,7 +15,6 @@ from .api import SessionID  # noqa
 from .registry import RegisterWarning
 from .utils import ENDPOINTS, REGISTRIES
 
-
 # Make sure that our registries & endpoints match up
 if not set(REGISTRIES.keys()) == set(ENDPOINTS.keys()):
     warnings.warn(

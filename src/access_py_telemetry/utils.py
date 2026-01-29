@@ -8,7 +8,6 @@ import yaml
 from pathlib import Path
 from dataclasses import dataclass, field
 
-
 with open(Path(__file__).parent / "config.yaml", "r") as f:
     config = yaml.safe_load(f)
 

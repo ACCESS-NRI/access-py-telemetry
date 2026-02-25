@@ -29,7 +29,6 @@ intake:
     - AliasedDataframeCatalog.keys
     - AliasedDataframeCatalog.to_source_dict
     - AliasedDataframeCatalog.to_source
-    - intake.cat.access_nri
   datastore:
     - use_datastore
     - open_esm_datastore

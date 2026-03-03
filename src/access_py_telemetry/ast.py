@@ -225,7 +225,7 @@ class CallListener(cst.CSTVisitor):
 
     def visit_Call(self, node: cst.Call) -> None:
         """
-        Visit a call nodde, process it if it's a registered call
+        Visit a call node, process it if it's a registered call
         """
         match node:
             case cst.Call(
@@ -338,7 +338,7 @@ class ChainSimplifier(cst.CSTTransformer):
     ) -> cst.Call:
         """
         When we leave a subscript node, replace eg. `instance[key]` with `ClassName.__getitem__(key)`.
-        This means we can !!get rid of !! the visist_Subscript method in CallListener!
+        This means there is no need for a `CallListener.visit_Subscript` method.
         """
         match updated_node:
             case cst.Subscript(  # String index

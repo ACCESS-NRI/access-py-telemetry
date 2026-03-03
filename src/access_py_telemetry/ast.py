@@ -61,7 +61,7 @@ def capture_registered_calls(info: ExecutionInfo) -> None:
     -------
     None
     """
-    code = info.raw_cell
+    code: str | None = info.raw_cell
 
     if code is None:
         return None
@@ -197,23 +197,6 @@ def extract_call_args_kwargs(
                 return args, kwargs
 
     return args, kwargs
-
-
-def format_args(args: list[Any], kwargs: dict[str, Any]) -> str:  # pragma: no cover
-    """
-    Format args and kwargs into a string representation
-    """
-    match args, kwargs:
-        case ([], {}):
-            return ""
-        case ([], _):
-            return ", ".join([f"{k}={v}" for k, v in kwargs.items()])
-        case _, {}:
-            return ", ".join([str(arg) for arg in args])
-        case _:
-            args_str = ", ".join([str(arg) for arg in args])
-            kwargs_str = ", ".join([f"{k}={v}" for k, v in kwargs.items()])
-            return f"{args_str}, {kwargs_str}"
 
 
 class CallListener(cst.CSTVisitor):

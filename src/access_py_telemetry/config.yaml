@@ -15,8 +15,20 @@ intake:
     - DfFileCatalog.to_source_dict
     - DfFileCatalog.to_source
     - intake.cat.access_nri
-    # - open_catalog
-    # - Catalog.__init__
+    - AliasedESMCatalog.search
+    - AliasedDataframeCatalog.search
+    - AliasedDataframeCatalog.__getitem__
+    - AliasedESMCatalog.to_dataset_dict
+    - AliasedESMCatalog.to_dask
+    - AliasedESMCatalog.df
+    - AliasedDataframeCatalog.df
+    - AliasedESMCatalog.unique
+    - AliasedESMCatalog.nunique
+    - AliasedDataframeCatalog.unique
+    - AliasedDataframeCatalog.nunique
+    - AliasedDataframeCatalog.keys
+    - AliasedDataframeCatalog.to_source_dict
+    - AliasedDataframeCatalog.to_source
   datastore:
     - use_datastore
     - open_esm_datastore

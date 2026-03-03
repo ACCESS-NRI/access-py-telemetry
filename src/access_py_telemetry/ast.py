@@ -15,7 +15,6 @@ from .api import ApiHandler
 from .registry import TelemetryRegister
 from .utils import REGISTRIES
 
-
 api_handler = ApiHandler()
 
 registries = {registry: TelemetryRegister(registry) for registry in REGISTRIES.keys()}

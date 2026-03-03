@@ -3,9 +3,10 @@
 
 """Tests for `access_py_telemetry` package."""
 
-from access_py_telemetry.registry import TelemetryRegister
-from pydantic import ValidationError
 import pytest
+from pydantic import ValidationError
+
+from access_py_telemetry.registry import TelemetryRegister
 
 
 def test_telemetry_register_unique(reset_telemetry_register):
@@ -23,6 +24,7 @@ def test_telemetry_register_unique(reset_telemetry_register):
         "esm_datastore.search",
         "DfFileCatalog.search",
         "DfFileCatalog.__getitem__",
+        "AliasedDataframeCatalog.__getitem__",
     }
 
     session1.register("test_function")
@@ -31,6 +33,7 @@ def test_telemetry_register_unique(reset_telemetry_register):
         "esm_datastore.search",
         "DfFileCatalog.search",
         "DfFileCatalog.__getitem__",
+        "AliasedDataframeCatalog.__getitem__",
         "test_function",
     }
 

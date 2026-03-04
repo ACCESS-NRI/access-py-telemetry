@@ -476,8 +476,8 @@ class ChainSimplifier(cst.CSTTransformer):
         code = temp_module.code
         try:
             result_type = type(eval(code, globals(), self.user_namespace)).__name__
-        except Exception:
-            result_type = type_name  # fallback
+        except Exception:  # pragma: no cover
+            result_type = type_name  # pragma: no cover
 
         return cst.Name(value=result_type)
 

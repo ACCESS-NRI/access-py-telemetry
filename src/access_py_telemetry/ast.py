@@ -335,21 +335,23 @@ class ChainSimplifier(cst.CSTTransformer):
 
     def leave_Subscript(
         self, original_node: cst.Subscript, updated_node: cst.Subscript
-    ) -> cst.Call:
+    ) -> cst.Call | cst.Name:
         """
         When we leave a subscript node, replace eg. `instance[key]` with `ClassName.__getitem__(key)`.
         This means there is no need for a `CallListener.visit_Subscript` method.
         """
         match updated_node:
-            case cst.Subscript(  # String index
-                value=cst.Name(value=instance_name),
+            case cst.Subscript(
+                value=cst.Call(func=cst.Name(value=type_name)),
                 slice=[
                     cst.SubscriptElement(
                         slice=cst.Index(value=cst.SimpleString(value=args))
                     )
                 ],
-            ) if (type_name := self._resolve_type(instance_name)) is not None:
-                return cst.Call(
+            ) if (
+                type(self.user_namespace.get(type_name, None)) is type
+            ):
+                _node = cst.Call(
                     func=cst.Attribute(
                         value=cst.Name(type_name),
                         attr=cst.Name("__getitem__"),
@@ -358,6 +360,59 @@ class ChainSimplifier(cst.CSTTransformer):
                         cst.Arg(value=cst.SimpleString(value=args)),
                     ],
                 )
+                full_name = f"{type_name}.__getitem__"
+                _args, _ = extract_call_args_kwargs(_node, self.user_namespace)
+                self._process_api_call(full_name, _args, {})
+
+                temp_module = cst.Module(
+                    body=[cst.SimpleStatementLine(body=[cst.Expr(value=updated_node)])]
+                )
+                code = temp_module.code
+                try:
+                    result_type = type(
+                        eval(code, globals(), self.user_namespace)
+                    ).__name__
+                except Exception:
+                    result_type = type_name  # fallback
+
+                return cst.Name(value=result_type)
+            case cst.Subscript(  # String index
+                value=cst.Name(value=instance_name),
+                slice=[
+                    cst.SubscriptElement(
+                        slice=cst.Index(value=cst.SimpleString(value=args))
+                    )
+                ],
+            ) if (type_name := self._resolve_type(instance_name)) is not None:
+                # First, send the telemetry call for ClassName.__getitem__
+                _node = cst.Call(
+                    func=cst.Attribute(
+                        value=cst.Name(type_name),
+                        attr=cst.Name("__getitem__"),
+                    ),
+                    args=[
+                        cst.Arg(value=cst.SimpleString(value=args)),
+                    ],
+                )
+                _args, _ = extract_call_args_kwargs(_node, self.user_namespace)
+                full_name = f"{type_name}.__getitem__"
+                self._process_api_call(full_name, _args, {})
+
+                # Evaluate the node and get the result type so that we can replace
+                # it.
+                temp_module = cst.Module(
+                    body=[cst.SimpleStatementLine(body=[cst.Expr(value=updated_node)])]
+                )
+                code = temp_module.code
+                try:
+                    result_type = type(
+                        eval(code, globals(), self.user_namespace)
+                    ).__name__
+                except Exception:
+                    result_type = type_name  # fallback
+
+                return cst.Name(value=result_type)
+
             case cst.Subscript(  # Integer index
                 value=cst.Name(value=instance_name),
                 slice=[

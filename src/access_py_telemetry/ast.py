@@ -335,13 +335,24 @@ class ChainSimplifier(cst.CSTTransformer):
 
     def leave_Subscript(
         self, original_node: cst.Subscript, updated_node: cst.Subscript
-    ) -> cst.Call:
+    ) -> cst.Call | cst.Name:
         """
         When we leave a subscript node, replace eg. `instance[key]` with `ClassName.__getitem__(key)`.
         This means there is no need for a `CallListener.visit_Subscript` method.
         """
         match updated_node:
-            case cst.Subscript(  # String index
+            case cst.Subscript(  # Something like MyClass()['key']
+                value=cst.Call(func=cst.Name(value=type_name)),
+                slice=[
+                    cst.SubscriptElement(
+                        slice=cst.Index(value=cst.SimpleString(value=args))
+                    )
+                ],
+            ) if (
+                type(self.user_namespace.get(type_name, None)) is type
+            ):
+                return self._process_subscript_call(type_name, updated_node, args)
+            case cst.Subscript(  # String index, eg. instance['key']
                 value=cst.Name(value=instance_name),
                 slice=[
                     cst.SubscriptElement(
@@ -349,15 +360,8 @@ class ChainSimplifier(cst.CSTTransformer):
                     )
                 ],
             ) if (type_name := self._resolve_type(instance_name)) is not None:
-                return cst.Call(
-                    func=cst.Attribute(
-                        value=cst.Name(type_name),
-                        attr=cst.Name("__getitem__"),
-                    ),
-                    args=[
-                        cst.Arg(value=cst.SimpleString(value=args)),
-                    ],
-                )
+                return self._process_subscript_call(type_name, updated_node, args)
+
             case cst.Subscript(  # Integer index
                 value=cst.Name(value=instance_name),
                 slice=[
@@ -395,11 +399,87 @@ class ChainSimplifier(cst.CSTTransformer):
                         ),  # TODO: so we can put the right value in here
                     ],
                 )
+            # Explicitly handle the case of `intake.cat.access_nri['something']
+            case cst.Subscript(
+                value=cst.Attribute(
+                    value=cst.Attribute(
+                        value=cst.Name(value="intake"),
+                        attr=cst.Name(value="cat"),
+                    ),
+                    attr=cst.Name(
+                        value="access_nri",
+                    ),
+                ),
+                slice=[
+                    cst.SubscriptElement(
+                        slice=cst.Index(value=cst.SimpleString(value=arg)),
+                    ),
+                ],
+            ):
+                self._process_api_call("intake.cat.access_nri", [], {})
+                return self._process_subscript_call("DfFileCatalog", updated_node, arg)
+            case cst.Subscript(
+                value=cst.Attribute(
+                    value=cst.Attribute(
+                        value=cst.Name(
+                            value="intake",
+                        ),
+                        attr=cst.Name(
+                            value="cat",
+                        ),
+                    ),
+                    attr=cst.Name(
+                        value="access_nri",
+                    ),
+                ),
+                slice=[
+                    cst.SubscriptElement(
+                        slice=cst.Index(
+                            value=cst.Name(
+                                value=arg,
+                            ),
+                        ),
+                    ),
+                ],
+            ) if (argval := self.user_namespace.get(arg, None)) is not None:
+                # Differs from above as we need to wrap arg in extra quotes to rewrite
+                # it as a simple string in the rewritten code.
+                self._process_api_call("intake.cat.access_nri", [], {})
+                return self._process_subscript_call(
+                    "DfFileCatalog", updated_node, f"'{argval}'"
+                )
             case _:  # pragma: no cover
                 raise AssertionError(
                     "Subscript node does not match expected pattern. "
                     "This should not happen, please report this as a bug."
                 )  # pragma: no cover
+
+    def _process_subscript_call(
+        self, type_name: str, updated_node: cst.Subscript, arg: str
+    ) -> cst.Name:
+        _node = cst.Call(
+            func=cst.Attribute(
+                value=cst.Name(type_name),
+                attr=cst.Name("__getitem__"),
+            ),
+            args=[
+                cst.Arg(value=cst.SimpleString(value=arg)),
+            ],
+        )
+        full_name = f"{type_name}.__getitem__"
+        _args, _ = extract_call_args_kwargs(_node, self.user_namespace)
+        self._process_api_call(full_name, _args, {})
+
+        temp_module = cst.Module(
+            body=[cst.SimpleStatementLine(body=[cst.Expr(value=updated_node)])]
+        )
+        code = temp_module.code
+        try:
+            result_type = type(eval(code, globals(), self.user_namespace)).__name__
+        except Exception:
+            result_type = type_name  # fallback
+
+        return cst.Name(value=result_type)
 
     def leave_Call(
         self, original_node: cst.Call, updated_node: cst.Call

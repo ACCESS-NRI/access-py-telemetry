@@ -307,24 +307,14 @@ class ChainSimplifier(cst.CSTTransformer):
         self, original_node: cst.Assign, updated_node: cst.Assign
     ) -> cst.Assign:
         """
-        When we leave an assignment node, if the value is a call to a registered function, we infer the type of the variable being assigned to.
-        This allows us to resolve the type of variables that are assigned from API calls, and use that type information to simplify chained calls.
+        When we leave an assignment node, if the value is a call to a registered
+        function, we infer the type of the variable being assigned to.  We also
+        handle the case of assigning a variable to another variable, so we can
+        track type information through simple variable assignments.  This allows
+        us to resolve the type of variables that are assigned from API calls, and
+        use that type information to simplify chained calls.
         """
         match updated_node:
-            case cst.Assign(
-                targets=[cst.AssignTarget(target=cst.Name(value=var_name))],
-                value=cst.Call(func=cst.Name(value=func_name)),
-            ) if (
-                func_name in self._caught_calls
-            ):
-                # If we're assigning the result of a registered API call to a variable, we can infer its type
-                func = self.user_namespace.get(func_name)
-                if func is not None:
-                    try:
-                        result_type = type(func()).__name__
-                        self._inferred_types[var_name] = result_type
-                    except Exception:
-                        pass  # If we can't call the function, we can't infer the type
             case cst.Assign(
                 targets=[cst.AssignTarget(target=cst.Name(value=var_name))],
                 value=cst.Name(value=type_name),

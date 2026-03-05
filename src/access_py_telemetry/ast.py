@@ -288,6 +288,7 @@ class ChainSimplifier(cst.CSTTransformer):
         self.registries = registries
         self._caught_calls: set[str] = set()  # Mostly for debugging
         self.api_handler = api_handler
+        self._inferred_types: dict[str, str] = {}
 
     def _resolve_type(self, instance_name: str) -> str:
         """
@@ -296,11 +297,42 @@ class ChainSimplifier(cst.CSTTransformer):
         """
         instance = self.user_namespace.get(instance_name)
         if instance is None:
-            return instance_name
+            return self._inferred_types.get(instance_name, "type")
         type_name = type(instance).__name__
         if type_name == "module":
             type_name = getattr(instance, "__name__", instance_name)
         return type_name
+
+    def leave_Assign(
+        self, original_node: cst.Assign, updated_node: cst.Assign
+    ) -> cst.Assign:
+        """
+        When we leave an assignment node, if the value is a call to a registered function, we infer the type of the variable being assigned to.
+        This allows us to resolve the type of variables that are assigned from API calls, and use that type information to simplify chained calls.
+        """
+        match updated_node:
+            case cst.Assign(
+                targets=[cst.AssignTarget(target=cst.Name(value=var_name))],
+                value=cst.Call(func=cst.Name(value=func_name)),
+            ) if (
+                func_name in self._caught_calls
+            ):
+                # If we're assigning the result of a registered API call to a variable, we can infer its type
+                func = self.user_namespace.get(func_name)
+                if func is not None:
+                    try:
+                        result_type = type(func()).__name__
+                        self._inferred_types[var_name] = result_type
+                    except Exception:
+                        pass  # If we can't call the function, we can't infer the type
+            case cst.Assign(
+                targets=[cst.AssignTarget(target=cst.Name(value=var_name))],
+                value=cst.Name(value=type_name),
+            ):
+                self._inferred_types[var_name] = type_name
+            case _:
+                pass
+        return updated_node
 
     def leave_Attribute(
         self, original_node: cst.Attribute, updated_node: cst.Attribute

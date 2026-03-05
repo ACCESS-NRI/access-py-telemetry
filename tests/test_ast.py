@@ -704,6 +704,57 @@ except Exception:
     }
 
 
+def test_import_stringindex_save_and_search():
+    mock_info = MockInfo()
+    mock_info.raw_cell = """
+import intake
+try:
+    datastore = intake.cat.access_nri["1deg_era5_iaf"]
+    dataset = datastore.search(
+        start_date='1960-01-01, 00:00:00'
+    ).to_dask()
+except Exception:
+    pass
+
+"""
+
+    mock_type_result = MagicMock()
+    mock_type_result = type("esm_datastore", (), {})()
+
+    f = sys._getframe()
+    exec(mock_info.raw_cell, globals(), f.f_locals)
+    mock_user_ns = f.f_locals
+
+    mock_registry = {
+        "mock": [
+            "intake.cat.access_nri",
+            "DfFileCatalog.__getitem__",
+            "esm_datastore.search",
+            "esm_datastore.to_dask",
+        ]
+    }
+
+    mock_api_handler = MagicMock()
+
+    tree = cst.parse_module(mock_info.raw_cell)
+    with patch("access_py_telemetry.ast.eval", return_value=mock_type_result):
+        reducer = ChainSimplifier(mock_user_ns, mock_registry, mock_api_handler)
+        reduced_tree = tree.visit(reducer)
+    wrapper = cst.MetadataWrapper(reduced_tree)
+
+    visitor = CallListener(mock_user_ns, mock_registry, mock_api_handler)
+    wrapper.visit(visitor)
+
+    visitor._caught_calls |= reducer._caught_calls
+
+    assert visitor._caught_calls == {
+        "intake.cat.access_nri",
+        "DfFileCatalog.__getitem__",
+        "esm_datastore.search",
+        "esm_datastore.to_dask",
+    }
+
+
 def test_import_varindex_and_search():
     mock_info = MockInfo()
     mock_info.raw_cell = """

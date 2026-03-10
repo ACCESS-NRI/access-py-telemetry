@@ -4,12 +4,13 @@ Copyright 2022 ACCESS-NRI and contributors. See the top-level COPYRIGHT file for
 SPDX-License-Identifier: Apache-2.0
 """
 
-from typing import Any
-import libcst as cst
-from libcst._exceptions import ParserSyntaxError
 import re
+from typing import Any
+
+import libcst as cst
 from IPython.core.getipython import get_ipython
 from IPython.core.interactiveshell import ExecutionInfo
+from libcst._exceptions import ParserSyntaxError
 
 from .api import ApiHandler
 from .registry import TelemetryRegister
@@ -71,6 +72,9 @@ def capture_registered_calls(info: ExecutionInfo) -> None:
     try:
         tree = cst.parse_module(code)
     except (ParserSyntaxError, IndentationError):
+        api_handler.send_failure_api_request(
+            "intake/failed-telemetry", code, "intake/failed-telemetry"
+        )
         return None
 
     _run_tree(tree)
@@ -90,8 +94,10 @@ def _run_tree(tree: cst.Module) -> None:  # pragma: no cover
         visitor._caught_calls |= reducer._caught_calls
     except Exception:
         # Catch all exceptions to avoid breaking the execution
-        # of the code being run.
-        return None
+        # of the code being run. Then post the raw code to the `failed-telemetry` endpoint
+        api_handler.send_failure_api_request(
+            "intake/failed-telemetry", tree.code, "intake/failed-telemetry"
+        )
 
 
 def extract_call_args_kwargs(

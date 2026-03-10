@@ -3,21 +3,22 @@ Copyright 2022 ACCESS-NRI and contributors. See the top-level COPYRIGHT file for
 SPDX-License-Identifier: Apache-2.0
 """
 
-from functools import wraps
-import sys
-from typing import Any, Type, Iterable, Callable
-import getpass
-import warnings
-import platform
-import uuid
-import httpx
 import asyncio
-import pydantic
-import re
-import yaml
-import multiprocessing
-from pathlib import Path, PurePosixPath
+import getpass
 import logging
+import multiprocessing
+import platform
+import re
+import sys
+import uuid
+import warnings
+from functools import wraps
+from pathlib import Path, PurePosixPath
+from typing import Any, Callable, Iterable, Type
+
+import httpx
+import pydantic
+import yaml
 
 from .utils import ENDPOINTS
 
@@ -329,6 +330,58 @@ class ApiHandler:
         )
         return None
 
+    @TOGGLE.debug()
+    def send_failure_api_request(
+        self,
+        service_name: str,
+        code: str,
+        endpoint: str,
+    ) -> None:
+        """
+        Send an API request with telemetry data, for instance where telemetry has failed parsing and
+        we just want to dump the raw code so it can be interrogated later.
+
+        Parameters
+        ----------
+        service_name : str
+            The name of the service to send the telemetry data to.
+        code : str
+            The code that failed to parse, or otherwise caused an error.
+        endpoint : str
+            The endpoint to send the telemetry data to. This is separate from the service name because we
+            don't parse a registry of functions for this use case, so we have to do things slightly
+            differently. TODO: I think I built in a side mechanism to do this - find it.
+
+        Returns
+        -------
+        None
+
+        Warnings
+        --------
+        RuntimeWarning
+            If the request fails.
+
+        """
+
+        telemetry_data = self._create_failure_record(service_name, code)
+
+        # Get headers for the service, defaulting to the headers for the intake_catalog. Needed
+        # because we don't have a service registered for this use yet
+        telemetry_headers = self.headers.get(
+            service_name, self.headers.get("intake_catalog", {})
+        )
+
+        endpoint = _format_endpoint(self.server_url, endpoint)
+
+        send_in_loop(
+            endpoint,
+            telemetry_data,
+            telemetry_headers,
+            self._request_timeout,
+            self._mproc_override,
+        )
+        return None
+
     def _get_endpoints(self, service_name: str) -> str:
         """
         Get the endpoint for a given service name.
@@ -363,6 +416,33 @@ class ApiHandler:
             "function": function_name,
             "args": args,
             "kwargs": kwargs,
+            "session_id": SessionID(),
+            **self.extra_fields.get(service_name, {}),
+        }
+
+        for field in self.pop_fields.get(service_name, []):
+            telemetry_data.pop(field)
+
+        self._last_record = telemetry_data
+        return telemetry_data
+
+    def _create_failure_record(
+        self,
+        service_name: str,
+        code: str,
+    ) -> dict[str, Any]:
+        """
+        Create and return a telemetry record, cache it as an instance attribute.
+
+
+        Notes
+        -----
+        SessionID() is a lazily evaluated singleton, so it looks like we are
+        going to generate a new session ID every time we call this function, but we
+        aren't. I've also modified __get__, so SessionID() evaluates to a string.
+        """
+        telemetry_data = {
+            "code": code,
             "session_id": SessionID(),
             **self.extra_fields.get(service_name, {}),
         }

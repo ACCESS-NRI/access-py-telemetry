@@ -3,20 +3,22 @@
 
 """Tests for `access_py_telemetry` package."""
 
+import time
+from unittest import mock
+
+import pytest
+from pydantic import ValidationError
+from pytest_httpserver import HTTPServer, RequestMatcher
+
 from access_py_telemetry.api import (
-    SessionID,
     ApiHandler,
     ProductionToggle,
-    send_in_loop,
-    send_telemetry,
+    SessionID,
     _format_endpoint,
     _run_event_loop,
+    send_in_loop,
+    send_telemetry,
 )
-from unittest import mock
-from pydantic import ValidationError
-import pytest
-from pytest_httpserver import HTTPServer, RequestMatcher
-import time
 
 
 @pytest.fixture
@@ -155,12 +157,20 @@ def test_api_handler_remove_fields(api_handler):
 
     api_handler.remove_fields("payu", ["session_id"])
 
+    api_handler.remove_fields("catalog", ["session_id"])
+
     api_handler.add_extra_fields("payu", {"model": "ACCESS-OM2", "random_number": 2})
 
     payu_record = api_handler._create_telemetry_record(
         service_name="payu", function_name="_test", args=[], kwargs={}
     )
+
+    failure_record = api_handler._create_failure_record(
+        service_name="catalog", code="unparseable"
+    )
+
     payu_record["name"] = "test_username"
+    failure_record["name"] = "test_username"
 
     assert payu_record == {
         "function": "_test",
@@ -171,7 +181,15 @@ def test_api_handler_remove_fields(api_handler):
         "random_number": 2,
     }
 
-    assert api_handler._pop_fields == {"payu": ["session_id"]}
+    assert failure_record == {
+        "code": "unparseable",
+        "name": "test_username",
+    }
+
+    assert api_handler._pop_fields == {
+        "payu": ["session_id"],
+        "catalog": ["session_id"],
+    }
 
     # Now remove the 'model' field from the payu record, as a string.
     api_handler.remove_fields("payu", "model")

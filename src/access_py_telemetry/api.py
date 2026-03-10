@@ -365,7 +365,11 @@ class ApiHandler:
 
         telemetry_data = self._create_failure_record(service_name, code)
 
-        telemetry_headers = self.headers.get(service_name, {})
+        # Get headers for the service, defaulting to the headers for the intake_catalog. Needed
+        # because we don't have a service registered for this use yet
+        telemetry_headers = self.headers.get(
+            service_name, self.headers.get("intake_catalog", {})
+        )
 
         endpoint = _format_endpoint(self.server_url, endpoint)
 

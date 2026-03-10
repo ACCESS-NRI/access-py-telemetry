@@ -72,6 +72,9 @@ def capture_registered_calls(info: ExecutionInfo) -> None:
     try:
         tree = cst.parse_module(code)
     except (ParserSyntaxError, IndentationError):
+        api_handler.send_failure_api_request(
+            "intake/failed-telemetry", code, "intake/failed-telemetry"
+        )
         return None
 
     _run_tree(tree)
@@ -93,7 +96,7 @@ def _run_tree(tree: cst.Module) -> None:  # pragma: no cover
         # Catch all exceptions to avoid breaking the execution
         # of the code being run. Then post the raw code to the `failed-telemetry` endpoint
         api_handler.send_failure_api_request(
-            "intake/failed-telemetry", tree.code, "api/intake/failed-telemetry"
+            "intake/failed-telemetry", tree.code, "intake/failed-telemetry"
         )
 
 

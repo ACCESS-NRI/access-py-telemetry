@@ -92,7 +92,9 @@ def _run_tree(tree: cst.Module) -> None:  # pragma: no cover
     except Exception:
         # Catch all exceptions to avoid breaking the execution
         # of the code being run. Then post the raw code to the `failed-telemetry` endpoint
-        api_handler.send_failure_api_request("intake/failed-telemetry", tree.code)
+        api_handler.send_failure_api_request(
+            "intake/failed-telemetry", tree.code, "api/intake/failed-telemetry"
+        )
 
 
 def extract_call_args_kwargs(

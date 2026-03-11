@@ -44,15 +44,12 @@ class ProductionToggle:
     accessed from anywhere in the code.
 
     Exposed functionality:
-    - production: bool
-        Whether the code is running in production or not. Setting this will also
-        set the server URL to the production or staging URL.
-    - debug: Callable
-        A decorator that wraps a function in a try/except block. If the code is
-        running in production, the function will be called normally. If the code
-        is not running in production, the function will be called and any
-        exceptions will be ignored. This is useful for debugging purposes.
 
+    - ``production`` (bool): Whether the code is running in production or not.
+      Setting this will also set the server URL to the production or staging URL.
+    - ``debug`` (Callable): A decorator that wraps a function in a try/except
+      block. If the code is running in production, the function will be called
+      normally. Exceptions are suppressed in production but raised in staging.
     """
 
     _production = True
@@ -459,14 +456,8 @@ class SessionID:
     Singleton class to store and generate a unique session ID.
 
     This class ensures that only one instance of the session ID exists. The session
-    ID is generated the first time it is accessed and is represented as a string.
-    The session ID is created using using the UUID4 algorithm.
-
-    Methods:
-        __new__(cls, *args, **kwargs): Ensures only one instance of the class is created.
-        __init__(self): Initializes the instance.
-        __get__(self, obj: object, objtype: type | None = None) -> str: Generates and returns the session ID.
-        create_session_id() -> str: Static method to create a unique session ID.
+    ID is generated the first time it is accessed and is represented as a string,
+    using the UUID4 algorithm.
     """
 
     _instance = None
@@ -555,11 +546,11 @@ def send_in_loop(
     mproc_override: str | None = None,
 ) -> None:
     """
-    Wraps the send_telemetry function in an event loop. This function will:
-    - Check if an event loop is already running
-    - If an event loop is running, send the telemetry data in the background
-    - If an event loop is not running, create a new event loop in a separate process
-        and send the telemetry data in the background using that loop.
+    Wraps the send_telemetry function in an event loop.
+
+    - If an event loop is already running, sends the telemetry data as a background task.
+    - If no event loop is running, creates a new event loop in a separate process and
+      sends the telemetry data in the background using that loop.
 
     Parameters
     ----------

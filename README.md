@@ -26,7 +26,7 @@ pip install access_py_telemetry
 Or via conda:
 
 ```bash
-conda install -c conda-forge access_py_telemetry
+conda install accessnri::access_py_telemetry
 ```
 
 ## For end users

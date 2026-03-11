@@ -9,7 +9,7 @@ pip install access_py_telemetry
 ## From conda
 
 ```bash
-conda install -c conda-forge access_py_telemetry
+conda install accessnri::access_py_telemetry
 ```
 
 ## From source

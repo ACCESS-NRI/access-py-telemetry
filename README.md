@@ -1,14 +1,39 @@
-# ACCESS-NRI Python/IPython Telemetry Extension
+# access-py-telemetry
 
-This package contains IPython extensions to automatically add telemetry to Python usage.
+[![CI](https://github.com/ACCESS-NRI/access-py-telemetry/actions/workflows/ci.yml/badge.svg)](https://github.com/ACCESS-NRI/access-py-telemetry/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/ACCESS-NRI/access-py-telemetry/branch/main/graph/badge.svg)](https://codecov.io/gh/ACCESS-NRI/access-py-telemetry)
+[![Documentation Status](https://readthedocs.org/projects/access-py-telemetry/badge/?version=latest)](https://access-py-telemetry.readthedocs.io/en/latest/)
+[![PyPI version](https://img.shields.io/pypi/v/access-py-telemetry.svg)](https://pypi.org/project/access-py-telemetry/)
+[![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](https://github.com/ACCESS-NRI/access-py-telemetry/blob/main/LICENSE)
 
-Documentation below is predominately catered to those interested in monitoring usage of their packages, and should allow to easily add telemetry to their code.
+An IPython/Jupyter extension that instruments registered Python function calls and sends non-blocking usage telemetry to remote endpoints.
 
-In order to load this correctly within a Jupyter notebook (registering telemetry calls for all cells, not just after the execution of the first cell), it will be necessary to use an IPython startup script.
-You can use the provided CLI script to configure the telemetry setup.
+> **Full documentation**: https://access-py-telemetry.readthedocs.io
 
-The `access-ipy-telemetry` CLI script is used to enable, disable, and check the status of telemetry in your IPython environment. This script manages the IPython startup script that registers telemetry calls for all notebook cells.
-It will add the following code to your IPython startup script:
+## Features
+
+- Non-blocking telemetry — async in Jupyter; subprocess outside Jupyter
+- YAML-driven configuration — register any function from any package to track
+- CLI for enabling/disabling telemetry in IPython startup
+- Decorator API for library authors to instrument functions at definition time
+
+## Installation
+
+```bash
+pip install access_py_telemetry
+```
+
+Or via conda:
+
+```bash
+conda install accessnri::access_py_telemetry
+```
+
+## For end users
+
+The `access-py-telemetry` CLI manages the IPython startup script that registers telemetry across all notebook cells.
+
+It installs the following code to your IPython startup profile:
 
 ```python
 try:
@@ -25,24 +50,20 @@ except ImportError as e:
 
 If you are using the `conda/analysis3` environment, telemetry will be enabled by default. 
 
-To enable telemetry in a notebook or ipython repl, run:
+To enable, disable, or check the status of telemetry from a notebook:
+
 ```python
-!access-ipy-telemetry --enable
-```
-To disable telemetry in a notebook or ipython repl, run:
-```python
-!access-ipy-telemetry --disable
-```
-To check the status of telemetry in a notebook or ipython repl, run:
-```python
-!access-ipy-telemetry --status
+!access-py-telemetry --enable
+!access-py-telemetry --disable
+!access-py-telemetry --status
 ```
 
-The same commands can be run from the command line, to enable, disable, and check the status of telemetry in your IPython environment.
+Or from the command line:
+
 ```bash
-$ access-ipy-telemetry --enable
-$ access-ipy-telemetry --disable
-$ access-ipy-telemetry --status
+$ access-py-telemetry --enable
+$ access-py-telemetry --disable
+$ access-py-telemetry --status
 ```
 
 This needs to be added to the system config for ipython, or it can be added to your user config (`~/.ipython/profile_default/startup/`) for testing. See [Ipython documentation](https://ipython.readthedocs.io/en/stable/config/intro.html#systemwide-configuration) for more information.
@@ -53,14 +74,8 @@ If this package is used within a Jupyter notebook, telemetry calls will be made 
 
 Outside a Jupyter notebook, telemetry calls will be made in a new python process using the multiprocessing module, and so will be non-blocking but may have a small overhead.
 
-![PyPI version](https://img.shields.io/pypi/v/access-py-telemetry.svg)
-![Build Status](https://img.shields.io/travis/access-nri/access_py_telemetry.svg)
-![Documentation Status](https://readthedocs.org/projects/access-py-telemetry/badge/?version=latest)
-
-Contains IPython extensions to automatically add telemetry to catalog usage.
-
-* Free software: Apache Software License 2.0
-* Documentation: https://access-py-telemetry.readthedocs.io.
+* License: Apache Software License 2.0
+* Documentation: https://access-py-telemetry.readthedocs.io
 
 # Usage
 
@@ -258,9 +273,9 @@ def my_func():
 
 ### Updating the default registry
 
-When you are happy with your telemetry configuration, you can update the default registry with your custom registry. This should be done via a PR, in which you update the `registry.yaml` file with your addtional functionality to track:
+When you are happy with your telemetry configuration, you can update the default registry with your custom registry. This should be done via a PR, in which you update the `config.yaml` file with your additional functionality to track:
 
-In the case of `my_service`, you would add the following to `registry.yaml`:
+In the case of `my_service`, you would add the following to `config.yaml`:
 
 ```yaml
 intake:
@@ -387,53 +402,5 @@ In order to track user sessions, this package uses a Session Identifier, generat
 Session Identifiers are unique to each python interpreter, and only change when the interpreter is restarted. 
 
 
-___
-## Credits
 
-This package was created with [Cookiecutter](https://github.com/audreyr/cookiecutter) and the [`audreyr/cookiecutter-pypackage`](https://github.com/audreyr/cookiecutter-pypackage) project template.
-
-___
-## COPYRIGHT Header
-
-An example, short, copyright statement is reproduced below, as it might appear in different coding languages. Copy and add to files as appropriate: 
-
-#### plaintext
-It is common to include copyright statements at the bottom of a text document or website page
-```text
-© 2022 ACCESS-NRI and contributors. See the top-level COPYRIGHT file for details. 
-SPDX-License-Identifier: Apache-2.0
-```
-
-#### python
-For code it is more common to include the copyright in a comment at the top
-```python
-# Copyright 2022 ACCESS-NRI and contributors. See the top-level COPYRIGHT file for details.
-# SPDX-License-Identifier: Apache-2.0
-```
-
-#### shell
-```bash
-# Copyright 2022 ACCESS-NRI and contributors. See the top-level COPYRIGHT file for details.
-# SPDX-License-Identifier: Apache-2.0
-```
-
-##### FORTRAN
-```fortran
-! Copyright 2022 ACCESS-NRI and contributors. See the top-level COPYRIGHT file for details.
-! SPDX-License-Identifier: Apache-2.0
-```
-
-#### C/C++ 
-```c
-// Copyright 2022 ACCESS-NRI and contributors. See the top-level COPYRIGHT file for details.
-// SPDX-License-Identifier: Apache-2.0
-```
-
-### Notes
-
-Note that the date is the first time the project is created. 
-
-The date signifies the year from which the copyright notice applies. **NEVER** replace with a later year, only ever add later years or a year range. 
-
-It is not necessary to include subsequent years in the copyright statement at all unless updates have been made at a later time, and even then it is largely discretionary: they are not necessary as copyright is contingent on the lifespan of copyright holder +50 years as per the [Berne Convention](https://en.wikipedia.org/wiki/Berne_Convention).
 

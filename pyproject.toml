@@ -44,6 +44,11 @@ dev = [
     "access-nri-intake",
     "numpy",
 ]
+docs = [
+    "sphinx>=7",
+    "myst-parser",
+    "sphinx-rtd-theme",
+]
 
 [project.scripts]
 access-py-telemetry = "access_py_telemetry.cli:configure_telemetry"

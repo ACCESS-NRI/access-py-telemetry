@@ -129,7 +129,7 @@ known-first-party = ["access_py_telemetry"]
 asyncio_default_fixture_loop_scope = "function"
 [tool.pixi.workspace]
 channels = ["conda-forge"]
-platforms = ["osx-arm64"]
+platforms = ["osx-arm64", "linux-64"]
 
 [tool.pixi.feature.dev.pypi-dependencies]
 access_py_telemetry = { path = ".", editable = true }

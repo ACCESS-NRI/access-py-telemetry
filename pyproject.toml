@@ -30,7 +30,7 @@ dynamic = ["version"]
 dev = [
     "coverage",          # testing
     "mypy",              # linting
-    "pytest",            # testing
+    "pytest>=9.0.3",     # testing
     "ruff",              # linting
     "pytest-httpserver", # #Endpoints for testing.
     "intake",
@@ -146,7 +146,7 @@ test-py314 = { features = ["py314", "test"] }
 
 [tool.pixi.feature.dev.dependencies]
 pre-commit = ">=4.2.0,<5"
-pytest = ">=8.4.2,<9"
+pytest = ">=9.0.3"
 
 [tool.pixi.feature.dev.tasks]
 mypy-setup = { cmd = "pixi run mypy --install-types", description = "Install mypy type stubs" }

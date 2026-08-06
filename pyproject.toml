@@ -150,8 +150,6 @@ pre-commit = ">=4.2.0,<5"
 pytest = ">=9.0.3"
 
 [tool.pixi.feature.dev.tasks]
-mypy-setup = { cmd = "pixi run mypy --install-types", description = "Install mypy type stubs" }
-pre-commit-install = { cmd = "pixi run pre-commit install", description = "Install pre-commit hooks" }
 pre-commit = { cmd = "pre-commit run --all-files && pixi lock", description = "Run pre-commit hooks" }
 dump-conda-env = { cmd = "pixi workspace export conda-environment --name access-py-telemetry-test > env.yml", description = "Dump conda environment to env.yml" }
 

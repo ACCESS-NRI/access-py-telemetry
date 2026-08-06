@@ -108,4 +108,6 @@ ENV/
 .vscode/
 .idea/
 
-test_notebooks/
+test_notebooks/# pixi environments
+.pixi/*
+!.pixi/config.toml

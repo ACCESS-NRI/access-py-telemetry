@@ -2,10 +2,32 @@
 """
 Copyright 2022 ACCESS-NRI and contributors. See the top-level COPYRIGHT file for details.
 SPDX-License-Identifier: Apache-2.0
+
+Detect registered function / method calls in an IPython cell and emit telemetry.
+
+The registry (``config.yaml``) is written in *type-qualified* names
+(``esm_datastore.search``, ``DfFileCatalog.__getitem__``) but user source uses
+*variables* (``esm_ds.search(...)``). We bridge that gap with a small
+**typed transition interpreter**: the abstract domain is our own telemetry node
+types (the class-name strings in the registry), registered calls are edges that
+emit a :class:`TelemetryEvent` and yield a successor node type, and a binding
+environment carries types through assignments. A registered method's successor
+defaults to *self*; only type-*changing* edges and the module/factory
+*generators* are declared in ``config.yaml`` (see ``utils.GENERATORS`` /
+``utils.TYPE_OVERRIDES``).
+
+The interpreter is a pure function of ``(source, registries, user_ns)`` returning
+an ordered ``list[TelemetryEvent]``; dispatch to the API is a separate step. The
+live namespace is consulted only as a *fallback* when a receiver's type cannot be
+resolved from the cell's own source, which is what lets us type objects created in
+the same cell (the ``pre_run_cell`` hook fires before the cell has executed).
 """
 
+import ast as _pyast
 import re
-from typing import Any
+from collections import ChainMap
+from dataclasses import dataclass, field
+from typing import Any, Sequence, Union
 
 import libcst as cst
 from IPython.core.getipython import get_ipython
@@ -13,28 +35,69 @@ from IPython.core.interactiveshell import ExecutionInfo
 from libcst._exceptions import ParserSyntaxError
 
 from .api import ApiHandler
-from .registry import TelemetryRegister
-from .utils import REGISTRIES
+from .utils import GENERATORS, REGISTRIES, TYPE_OVERRIDES
 
 api_handler = ApiHandler()
 
-registries = {registry: TelemetryRegister(registry) for registry in REGISTRIES.keys()}
+
+# --------------------------------------------------------------------------- #
+# Abstract values — what an expression evaluates to during interpretation.
+# --------------------------------------------------------------------------- #
+@dataclass(frozen=True)
+class Node:
+    """A modelled *instance* of node type ``type_name`` (a class-name string)."""
+
+    type_name: str
+
+
+@dataclass(frozen=True)
+class ClassRef:
+    """A reference to a class ``name``; calling it yields ``Node(name)``."""
+
+    name: str
+
+
+@dataclass(frozen=True)
+class Dotted:
+    """A module / attribute dotted path, or a bare callable name (``os.path``)."""
+
+    path: str
+
+
+class _Unknown:
+    """The absorbing ⊤: an un-typeable value. Emits nothing, absorbs every edge."""
+
+    def __repr__(self) -> str:  # pragma: no cover
+        return "UNKNOWN"
+
+
+UNKNOWN = _Unknown()
+
+AbstractValue = Union[Node, ClassRef, Dotted, _Unknown]
+
+
+@dataclass
+class TelemetryEvent:
+    """One detected registered call: the qualified name plus its verbatim args."""
+
+    name: str
+    args: list[Any] = field(default_factory=list)
+    kwargs: dict[str, Any] = field(default_factory=dict)
 
 
 def strip_magic(code: str) -> str:
     """
-    Parse the provided code into an AST (Abstract Syntax Tree).
+    Remove IPython magic commands from a cell so it parses as plain Python.
 
     Parameters
     ----------
-
     code : str
         The code to parse.
+
     Returns
     -------
     str
         The code without IPython magic commands.
-
     """
 
     IPYTHON_MAGIC_PATTERN = r"^\s*[%!?]{1,2}|^.*\?{1,2}$"
@@ -48,10 +111,10 @@ def strip_magic(code: str) -> str:
 
 def capture_registered_calls(info: ExecutionInfo) -> None:
     """
-    Use the AST module to parse the code that we are executing & send an API call
-    if we detect specific function or method calls.
+    Parse the executing cell, detect registered calls, and dispatch telemetry.
 
-    Fail silently if we can't parse the code.
+    Fails silently (routing the raw code to the ``failed-telemetry`` endpoint) if
+    we can't parse or interpret the code, so telemetry never breaks a user's cell.
 
     Parameters
     ----------
@@ -77,31 +140,407 @@ def capture_registered_calls(info: ExecutionInfo) -> None:
         )
         return None
 
-    _run_tree(tree)
-
-    return None
-
-
-def _run_tree(tree: cst.Module) -> None:  # pragma: no cover
-    user_namespace: dict[str, Any] = get_ipython().user_ns  # type: ignore
-
     try:
-        reducer = ChainSimplifier(user_namespace, REGISTRIES, api_handler)
-        reduced_tree = tree.visit(reducer)
-        visitor = CallListener(user_namespace, REGISTRIES, api_handler)
-        wrapper = cst.MetadataWrapper(reduced_tree)
-        wrapper.visit(visitor)
-        visitor._caught_calls |= reducer._caught_calls
+        user_namespace: dict[str, Any] = get_ipython().user_ns  # type: ignore
+        events = interpret(tree, REGISTRIES, user_namespace)
+        _dispatch(events, REGISTRIES)
     except Exception:
-        # Catch all exceptions to avoid breaking the execution
-        # of the code being run. Then post the raw code to the `failed-telemetry` endpoint
+        # Catch all exceptions to avoid breaking the execution of the code being
+        # run, then post the raw code to the `failed-telemetry` endpoint.
         api_handler.send_failure_api_request(
             "intake/failed-telemetry", tree.code, "intake/failed-telemetry"
         )
 
+    return None
+
+
+def interpret(
+    tree: cst.Module,
+    registries: dict[str, set[str]],
+    user_ns: dict[str, Any],
+) -> list[TelemetryEvent]:
+    """
+    Interpret a parsed cell into an ordered list of telemetry events.
+
+    A pure function of its inputs: no I/O, no namespace mutation. This is the unit
+    the tests drive directly (``source -> events``).
+
+    Parameters
+    ----------
+    tree : libcst.Module
+        The parsed cell.
+    registries : dict[str, set[str]]
+        Service name -> set of registered qualified names.
+    user_ns : dict[str, Any]
+        The live namespace, consulted only as a type/value fallback.
+
+    Returns
+    -------
+    list[TelemetryEvent]
+        The detected registered calls, in source (evaluation) order.
+    """
+    return _Interpreter(registries, user_ns).run(tree)
+
+
+def _dispatch(events: list[TelemetryEvent], registries: dict[str, set[str]]) -> None:
+    """Send each event to every service whose registry contains its name."""
+    for event in events:
+        for service, registered in registries.items():
+            if event.name in registered:
+                api_handler.send_api_request(
+                    service, event.name, event.args, event.kwargs
+                )
+
+
+class _Interpreter:
+    """Forward, evaluation-order walk that resolves receiver types and emits events."""
+
+    def __init__(
+        self, registries: dict[str, set[str]], user_ns: dict[str, Any]
+    ) -> None:
+        self.registered: set[str] = (
+            set().union(*registries.values()) if registries else set()
+        )
+        self.user_ns = user_ns
+        # Same-cell literal bindings, layered over the live namespace for arg
+        # resolution (extract_call_args_kwargs looks names up in this mapping).
+        self._literals: dict[str, Any] = {}
+        self.value_env: ChainMap[str, Any] = ChainMap(self._literals, user_ns)
+        # Concrete source-derived type bindings. A name absent here falls back to
+        # its runtime type in the namespace (see ``_resolve_name``).
+        self.type_env: dict[str, AbstractValue] = {}
+        self.events: list[TelemetryEvent] = []
+
+    # -- entry ------------------------------------------------------------- #
+    def run(self, tree: cst.Module) -> list[TelemetryEvent]:
+        self._walk(tree.body)
+        return self.events
+
+    # -- statement walk ---------------------------------------------------- #
+    def _walk(self, body: Sequence[cst.CSTNode]) -> None:
+        for stmt in body:
+            self._statement(stmt)
+
+    def _statement(self, stmt: cst.CSTNode) -> None:
+        match stmt:
+            case cst.SimpleStatementLine(body=small):
+                for small_stmt in small:
+                    self._small_statement(small_stmt)
+            case cst.ClassDef(name=cst.Name(value=name), body=cst.IndentedBlock() as b):
+                self.type_env[name] = ClassRef(name)
+                self._walk(b.body)
+            case cst.FunctionDef(
+                name=cst.Name(value=name), body=cst.IndentedBlock() as b
+            ):
+                # A bare callable ref: calling it emits by its (literal) name.
+                self.type_env[name] = Dotted(name)
+                self._walk(b.body)
+            case cst.If(body=cst.IndentedBlock() as b, orelse=orelse):
+                self._walk(b.body)
+                self._orelse(orelse)
+            case cst.For(body=cst.IndentedBlock() as b, orelse=orelse):
+                self._walk(b.body)
+                self._orelse(orelse)
+            case cst.While(body=cst.IndentedBlock() as b, orelse=orelse):
+                self._walk(b.body)
+                self._orelse(orelse)
+            case cst.With(body=cst.IndentedBlock() as b):
+                self._walk(b.body)
+            case cst.Try() as node:
+                self._walk(node.body.body)
+                for handler in node.handlers:
+                    self._walk(handler.body.body)
+                self._orelse(node.orelse)
+                if node.finalbody is not None and isinstance(
+                    node.finalbody.body, cst.IndentedBlock
+                ):
+                    self._walk(node.finalbody.body.body)
+            case _:
+                pass
+
+    def _orelse(self, orelse: cst.CSTNode | None) -> None:
+        match orelse:
+            case cst.Else(body=cst.IndentedBlock() as b):
+                self._walk(b.body)
+            case cst.If():
+                self._statement(orelse)
+            case cst.Try():
+                self._statement(orelse)
+            case _:
+                pass
+
+    def _small_statement(self, stmt: cst.CSTNode) -> None:
+        match stmt:
+            case cst.Import(names=names):
+                for alias in names:
+                    self._bind_import(alias)
+            case cst.ImportFrom(names=names) if not isinstance(names, cst.ImportStar):
+                for alias in names:
+                    self._bind_import_from(alias)
+            case cst.Assign(targets=targets, value=value):
+                resolved = self._eval(value)
+                self._capture_literal(targets, value)
+                for target in targets:
+                    self._bind_target(target.target, resolved)
+            case cst.AnnAssign(target=target, value=value) if value is not None:
+                resolved = self._eval(value)
+                self._bind_target(target, resolved)
+            case cst.Expr(value=value):
+                self._eval(value)
+            case cst.Return(value=value) if value is not None:
+                self._eval(value)
+            case _:
+                pass
+
+    # -- bindings ---------------------------------------------------------- #
+    def _bind_import(self, alias: cst.ImportAlias) -> None:
+        module = _dotted_name(alias.name)
+        if module is None:
+            return
+        if alias.asname is not None and isinstance(alias.asname.name, cst.Name):
+            self.type_env[alias.asname.name.value] = Dotted(module)
+        else:
+            # `import a.b.c` binds the top-level name `a`.
+            self.type_env[module.split(".")[0]] = Dotted(module.split(".")[0])
+
+    def _bind_import_from(self, alias: cst.ImportAlias) -> None:
+        name = _dotted_name(alias.name)
+        if name is None:
+            return
+        if alias.asname is not None and isinstance(alias.asname.name, cst.Name):
+            self.type_env[alias.asname.name.value] = Dotted(name)
+        else:
+            self.type_env[name] = Dotted(name)
+
+    def _bind_target(self, target: cst.CSTNode, value: AbstractValue) -> None:
+        if not isinstance(target, cst.Name):
+            return
+        if isinstance(value, _Unknown):
+            # Don't clobber a namespace-derived type with an un-typeable RHS; drop
+            # the source binding so `_resolve_name` falls back to the namespace.
+            self.type_env.pop(target.value, None)
+        else:
+            self.type_env[target.value] = value
+
+    def _capture_literal(
+        self, targets: Sequence[cst.AssignTarget], value: cst.BaseExpression
+    ) -> None:
+        """Record a same-cell literal binding for later arg resolution."""
+        literal = _literal_value(value)
+        if literal is _NO_LITERAL:
+            return
+        for target in targets:
+            if isinstance(target.target, cst.Name):
+                self._literals[target.target.value] = literal
+
+    # -- expression evaluation -------------------------------------------- #
+    def _eval(self, node: cst.BaseExpression) -> AbstractValue:
+        match node:
+            case cst.Name(value=name):
+                return self._resolve_name(name)
+            case cst.Attribute(value=base, attr=cst.Name(value=attr)):
+                return self._attribute(self._eval(base), attr, emit=True)
+            case cst.Call():
+                return self._call(node)
+            case cst.Subscript():
+                return self._subscript(node)
+            case cst.List():
+                return Node("list")
+            case cst.Tuple():
+                return Node("tuple")
+            case cst.Dict():
+                return Node("dict")
+            case cst.Set():
+                return Node("set")
+            case _:
+                return UNKNOWN
+
+    def _resolve_name(self, name: str) -> AbstractValue:
+        if name in self.type_env:
+            return self.type_env[name]
+        if name in self.user_ns:
+            return _abstract_from_obj(self.user_ns[name])
+        return UNKNOWN
+
+    def _attribute(
+        self, base: AbstractValue, attr: str, *, emit: bool
+    ) -> AbstractValue:
+        """Attribute access ``base.attr``. Emits (when ``emit``) if registered."""
+        match base:
+            case Node(type_name=tname) | ClassRef(name=tname):
+                qualname = f"{tname}.{attr}"
+                if emit:
+                    self._maybe_emit(qualname, [], {})
+                return self._method_successor(tname, attr)
+            case Dotted(path=path):
+                newpath = f"{path}.{attr}"
+                if emit:
+                    self._maybe_emit(newpath, [], {})
+                if newpath in GENERATORS:
+                    return Node(GENERATORS[newpath])
+                return Dotted(newpath)
+            case _:
+                return UNKNOWN
+
+    def _call(self, node: cst.Call) -> AbstractValue:
+        # Evaluate arguments first, for side-effect emits from nested calls.
+        for arg in node.args:
+            self._eval(arg.value)
+
+        match node.func:
+            case cst.Attribute(value=base, attr=cst.Name(value=attr)):
+                receiver = self._eval(base)
+                return self._call_method(receiver, attr, node)
+            case cst.Name(value=name):
+                return self._call_name(name, node)
+            case _:
+                self._eval(node.func)
+                return UNKNOWN
+
+    def _call_name(self, name: str, node: cst.Call) -> AbstractValue:
+        callee = self._resolve_name(name)
+        match callee:
+            case ClassRef(name=cls):
+                # Constructor: `MyClass(...)` -> Node("MyClass").
+                self._maybe_emit_call(cls, node)
+                return Node(cls)
+            case Dotted(path=path):
+                self._maybe_emit_call(path, node)
+                if path in GENERATORS:
+                    return Node(GENERATORS[path])
+                return UNKNOWN
+            case _:
+                # Fall back to the literal name (matches bare-function detection).
+                self._maybe_emit_call(name, node)
+                if name in GENERATORS:
+                    return Node(GENERATORS[name])
+                return UNKNOWN
+
+    def _call_method(
+        self, receiver: AbstractValue, attr: str, node: cst.Call
+    ) -> AbstractValue:
+        match receiver:
+            case Node(type_name=tname) | ClassRef(name=tname):
+                self._maybe_emit_call(f"{tname}.{attr}", node)
+                return self._method_successor(tname, attr)
+            case Dotted(path=path):
+                self._maybe_emit_call(f"{path}.{attr}", node)
+                return UNKNOWN
+            case _:
+                return UNKNOWN
+
+    def _subscript(self, node: cst.Subscript) -> AbstractValue:
+        base = self._eval(node.value)
+        tname: str | None = None
+        match base:
+            case Node(type_name=name) | ClassRef(name=name):
+                tname = name
+            case _:
+                tname = None
+        if tname is None:
+            return UNKNOWN
+
+        args = self._subscript_args(node)
+        self._maybe_emit(f"{tname}.__getitem__", args, {})
+        return self._method_successor(tname, "__getitem__")
+
+    # -- transition table -------------------------------------------------- #
+    def _method_successor(self, type_name: str, method: str) -> AbstractValue:
+        """Successor node type of ``type_name.method`` (default: self)."""
+        override = TYPE_OVERRIDES.get(type_name, {}).get(method)
+        if override is not None:
+            return Node(override)
+        if f"{type_name}.{method}" in self.registered:
+            return Node(type_name)  # default: returns self
+        return UNKNOWN
+
+    # -- emission ---------------------------------------------------------- #
+    def _maybe_emit(
+        self, qualname: str, args: list[Any], kwargs: dict[str, Any]
+    ) -> None:
+        if qualname in self.registered:
+            self.events.append(TelemetryEvent(qualname, args, kwargs))
+
+    def _maybe_emit_call(self, qualname: str, node: cst.Call) -> None:
+        if qualname in self.registered:
+            args, kwargs = extract_call_args_kwargs(node, self.value_env)
+            self.events.append(TelemetryEvent(qualname, args, kwargs))
+
+    def _subscript_args(self, node: cst.Subscript) -> list[Any]:
+        if len(node.slice) != 1:
+            return []
+        index = node.slice[0].slice
+        if not isinstance(index, cst.Index):
+            return []
+        match index.value:
+            case (
+                cst.SimpleString(value=val)
+                | cst.Integer(value=val)
+                | cst.Float(value=val)
+            ):
+                return [val]
+            case cst.Name(value=name):
+                resolved = self.value_env.get(name, _NO_LITERAL)
+                if resolved is _NO_LITERAL:
+                    return []
+                if isinstance(resolved, int) and not isinstance(resolved, bool):
+                    return [f"{resolved}"]
+                return [f"'{resolved}'"]
+            case _:
+                return []
+
+
+# --------------------------------------------------------------------------- #
+# Helpers
+# --------------------------------------------------------------------------- #
+def _abstract_from_obj(obj: Any) -> AbstractValue:
+    """Type a live namespace object into an abstract value."""
+    import types
+
+    if isinstance(obj, types.ModuleType):
+        return Dotted(getattr(obj, "__name__", ""))
+    if isinstance(obj, type):
+        return ClassRef(obj.__name__)
+    return Node(type(obj).__name__)
+
+
+def _dotted_name(node: cst.CSTNode) -> str | None:
+    """Flatten an import name (``Name`` / dotted ``Attribute``) into ``a.b.c``."""
+    match node:
+        case cst.Name(value=str() as name):
+            return name
+        case cst.Attribute(value=base, attr=cst.Name(value=attr)):
+            base_name = _dotted_name(base)
+            return f"{base_name}.{attr}" if base_name is not None else None
+        case _:
+            return None
+
+
+class _NoLiteral:
+    pass
+
+
+_NO_LITERAL = _NoLiteral()
+
+
+def _literal_value(node: cst.BaseExpression) -> Any:
+    """Best-effort Python value of a literal expression, else ``_NO_LITERAL``."""
+    match node:
+        case cst.SimpleString(value=val):
+            try:
+                return _pyast.literal_eval(val)
+            except (ValueError, SyntaxError):  # pragma: no cover
+                return _NO_LITERAL
+        case cst.Integer(value=val):
+            return int(val)
+        case cst.Float(value=val):
+            return float(val)
+        case _:
+            return _NO_LITERAL
+
 
 def extract_call_args_kwargs(
-    node: cst.Call, user_ns: dict[str, Any]
+    node: cst.Call, user_ns: Any
 ) -> tuple[list[Any], dict[str, Any]]:  # pragma: no cover
     """
     Take a cst Call Node and extract the args and kwargs, into a tuple of (args, kwargs)
@@ -203,379 +642,3 @@ def extract_call_args_kwargs(
                 return args, kwargs
 
     return args, kwargs
-
-
-class CallListener(cst.CSTVisitor):
-    METADATA_DEPENDENCIES = (cst.metadata.ParentNodeProvider,)
-
-    def __init__(
-        self,
-        user_namespace: dict[str, Any],
-        registries: dict[str, set[str]],
-        api_handler: ApiHandler,
-    ):
-        self.user_namespace = user_namespace
-        self.registries = registries
-        self._caught_calls: set[str] = set()  # Mostly for debugging
-        self.api_handler = api_handler
-
-    def visit_Attribute(self, node: cst.Attribute) -> None:
-        parent = self.get_metadata(cst.metadata.ParentNodeProvider, node)
-        full_name = self._get_full_name(node)
-        match full_name, parent:
-            case str(), cst.Call():
-                return None
-            case str(), _:
-                self._process_api_call(full_name, [], {})
-        return None
-
-    def visit_Call(self, node: cst.Call) -> None:
-        """
-        Visit a call node, process it if it's a registered call
-        """
-        match node:
-            case cst.Call(
-                func=cst.Name(
-                    value=full_name,
-                )
-            ):
-                args, kwargs = extract_call_args_kwargs(node, self.user_namespace)
-                self._process_api_call(full_name, args, kwargs)
-            case cst.Call(
-                func=cst.Attribute(
-                    value=cst.Name(value=base_name),
-                    attr=cst.Name(
-                        value=attr_name,
-                    ),
-                )
-            ):
-                args, kwargs = extract_call_args_kwargs(node, self.user_namespace)
-                full_name = f"{base_name}.{attr_name}"
-                self._process_api_call(full_name, args, kwargs)
-            case cst.Call(func=cst.Attribute() as attr_node):
-                if full_name := self._get_full_name(attr_node):
-                    # If we have a full name, we can process the call
-                    args, kwargs = extract_call_args_kwargs(node, self.user_namespace)
-                    self._process_api_call(full_name, args, kwargs)
-
-    def _process_api_call(
-        self, func_name: str, args: list[Any], kwargs: dict[str, Any]
-    ) -> None:
-        """Process an API call for a matched function name."""
-        for registry, registered_funcs in self.registries.items():
-            if func_name in registered_funcs:
-                self.api_handler.send_api_request(
-                    registry,
-                    func_name,
-                    args,
-                    kwargs,
-                )
-                self._caught_calls |= {func_name}
-
-    def _get_full_name(self, node: cst.CSTNode) -> str:
-        """Recursively get the full name of a function or method call."""
-        return _get_full_name(node)
-
-
-class ChainSimplifier(cst.CSTTransformer):
-    """
-    Transform chained calls by removing intermediate method calls
-    Example: ds.search(...).search(...).to_dataset_dict()
-    becomes: ds.to_dataset_dict()
-    """
-
-    def __init__(
-        self,
-        user_namespace: dict[str, Any],
-        registries: dict[str, set[str]],
-        api_handler: ApiHandler,
-    ):
-        self.user_namespace = user_namespace
-        self.registries = registries
-        self._caught_calls: set[str] = set()  # Mostly for debugging
-        self.api_handler = api_handler
-        self._inferred_types: dict[str, str] = {}
-
-    def _resolve_type(self, instance_name: str) -> str:
-        """
-        Resolve the type of an instance by its name.
-        If the instance is a module, return its name.
-        """
-        instance = self.user_namespace.get(instance_name)
-        if instance is None:
-            return self._inferred_types.get(instance_name, "type")
-        type_name = type(instance).__name__
-        if type_name == "module":
-            type_name = getattr(instance, "__name__", instance_name)
-        return type_name
-
-    def leave_Assign(
-        self, original_node: cst.Assign, updated_node: cst.Assign
-    ) -> cst.Assign:
-        """
-        When we leave an assignment node, if the value is a call to a registered
-        function, we infer the type of the variable being assigned to.  We also
-        handle the case of assigning a variable to another variable, so we can
-        track type information through simple variable assignments.  This allows
-        us to resolve the type of variables that are assigned from API calls, and
-        use that type information to simplify chained calls.
-        """
-        match updated_node:
-            case cst.Assign(
-                targets=[cst.AssignTarget(target=cst.Name(value=var_name))],
-                value=cst.Name(value=type_name),
-            ):
-                self._inferred_types[var_name] = type_name
-            case _:
-                pass
-        return updated_node
-
-    def leave_Attribute(
-        self, original_node: cst.Attribute, updated_node: cst.Attribute
-    ) -> cst.Attribute:
-        """
-        When we leave an attribute node, if it's parent is a cst.Name (ie. the
-        root of a chain of attribute accesses), we replace the value of the
-        attribute with the type name of the instance.
-        """
-
-        match updated_node:
-            case cst.Attribute(
-                value=cst.Name(
-                    value=instance_name,
-                ),
-                attr=cst.Name(value=_),
-            ) if (type_name := self._resolve_type(instance_name)) not in [None, "type"]:
-                return updated_node.with_changes(value=cst.Name(type_name))
-            case cst.Attribute(
-                value=cst.Call(
-                    func=cst.Name(
-                        value=_maybe_class_name,
-                    ),
-                )
-            ) if (
-                type(self.user_namespace.get(_maybe_class_name, None)) is type
-            ):
-                return updated_node.with_changes(value=cst.Name(_maybe_class_name))
-
-            case _:
-                return updated_node
-
-    def leave_Subscript(
-        self, original_node: cst.Subscript, updated_node: cst.Subscript
-    ) -> cst.Call | cst.Name:
-        """
-        When we leave a subscript node, replace eg. `instance[key]` with `ClassName.__getitem__(key)`.
-        This means there is no need for a `CallListener.visit_Subscript` method.
-        """
-        match updated_node:
-            case cst.Subscript(  # Something like MyClass()['key']
-                value=cst.Call(func=cst.Name(value=type_name)),
-                slice=[
-                    cst.SubscriptElement(
-                        slice=cst.Index(value=cst.SimpleString(value=args))
-                    )
-                ],
-            ) if (
-                type(self.user_namespace.get(type_name, None)) is type
-            ):
-                return self._process_subscript_call(type_name, updated_node, args)
-            case cst.Subscript(  # String index, eg. instance['key']
-                value=cst.Name(value=instance_name),
-                slice=[
-                    cst.SubscriptElement(
-                        slice=cst.Index(value=cst.SimpleString(value=args))
-                    )
-                ],
-            ) if (type_name := self._resolve_type(instance_name)) is not None:
-                return self._process_subscript_call(type_name, updated_node, args)
-
-            case cst.Subscript(  # Integer index
-                value=cst.Name(value=instance_name),
-                slice=[
-                    cst.SubscriptElement(slice=cst.Index(value=cst.Integer(value=args)))
-                ],
-            ) if (type_name := self._resolve_type(instance_name)) is not None:
-                return cst.Call(
-                    func=cst.Attribute(
-                        value=cst.Name(type_name),
-                        attr=cst.Name("__getitem__"),
-                    ),
-                    args=[
-                        cst.Arg(value=cst.Integer(value=args)),
-                    ],
-                )
-            case cst.Subscript(  # Variable index
-                value=cst.Name(value=instance_name),
-                slice=[
-                    cst.SubscriptElement(slice=cst.Index(value=cst.Name(value=args)))
-                ],
-            ) if (type_name := self._resolve_type(instance_name)) is not None:
-                res_args: int | str | object = self.user_namespace.get(args, args)
-                if isinstance(res_args, int):
-                    mval: cst.BaseExpression = cst.Integer(value=f"{res_args}")
-                else:
-                    mval = cst.SimpleString(value=f"'{res_args}'")
-                return cst.Call(
-                    func=cst.Attribute(
-                        value=cst.Name(type_name),
-                        attr=cst.Name("__getitem__"),
-                    ),
-                    args=[
-                        cst.Arg(
-                            value=mval
-                        ),  # TODO: so we can put the right value in here
-                    ],
-                )
-            # Explicitly handle the case of `intake.cat.access_nri['something']
-            case cst.Subscript(
-                value=cst.Attribute(
-                    value=cst.Attribute(
-                        value=cst.Name(value="intake"),
-                        attr=cst.Name(value="cat"),
-                    ),
-                    attr=cst.Name(
-                        value="access_nri",
-                    ),
-                ),
-                slice=[
-                    cst.SubscriptElement(
-                        slice=cst.Index(value=cst.SimpleString(value=arg)),
-                    ),
-                ],
-            ):
-                self._process_api_call("intake.cat.access_nri", [], {})
-                return self._process_subscript_call("DfFileCatalog", updated_node, arg)
-            case cst.Subscript(
-                value=cst.Attribute(
-                    value=cst.Attribute(
-                        value=cst.Name(
-                            value="intake",
-                        ),
-                        attr=cst.Name(
-                            value="cat",
-                        ),
-                    ),
-                    attr=cst.Name(
-                        value="access_nri",
-                    ),
-                ),
-                slice=[
-                    cst.SubscriptElement(
-                        slice=cst.Index(
-                            value=cst.Name(
-                                value=arg,
-                            ),
-                        ),
-                    ),
-                ],
-            ) if (argval := self.user_namespace.get(arg, None)) is not None:
-                # Differs from above as we need to wrap arg in extra quotes to rewrite
-                # it as a simple string in the rewritten code.
-                self._process_api_call("intake.cat.access_nri", [], {})
-                return self._process_subscript_call(
-                    "DfFileCatalog", updated_node, f"'{argval}'"
-                )
-            case _:  # pragma: no cover
-                raise AssertionError(
-                    "Subscript node does not match expected pattern. "
-                    "This should not happen, please report this as a bug."
-                )  # pragma: no cover
-
-    def _process_subscript_call(
-        self, type_name: str, updated_node: cst.Subscript, arg: str
-    ) -> cst.Name:
-        _node = cst.Call(
-            func=cst.Attribute(
-                value=cst.Name(type_name),
-                attr=cst.Name("__getitem__"),
-            ),
-            args=[
-                cst.Arg(value=cst.SimpleString(value=arg)),
-            ],
-        )
-        full_name = f"{type_name}.__getitem__"
-        _args, _ = extract_call_args_kwargs(_node, self.user_namespace)
-        self._process_api_call(full_name, _args, {})
-
-        temp_module = cst.Module(
-            body=[cst.SimpleStatementLine(body=[cst.Expr(value=updated_node)])]
-        )
-        code = temp_module.code
-        try:
-            result_type = type(eval(code, globals(), self.user_namespace)).__name__
-        except Exception:  # pragma: no cover
-            result_type = type_name  # pragma: no cover
-
-        return cst.Name(value=result_type)
-
-    def leave_Call(
-        self, original_node: cst.Call, updated_node: cst.Call
-    ) -> cst.Call | cst.Name:
-        # Use matcher to identify the pattern: any_method(search_call(...))
-
-        match updated_node:
-            case cst.Call(
-                func=cst.Name(
-                    value=func_name,
-                )
-            ) if (instance := self.user_namespace.get(func_name, None)) is not None:
-                func_name = (
-                    instance.__name__
-                )  # Dealias if we've renamed it something else
-                return updated_node.with_changes(func=cst.Name(func_name))
-            case cst.Call(
-                func=cst.Attribute(
-                    value=cst.Name(value=base_name),
-                    attr=cst.Name(
-                        value=attr_name,
-                    ),
-                )
-            ):  # TODO: check that we return self here or don't do anything
-                args, kwargs = extract_call_args_kwargs(
-                    updated_node, self.user_namespace
-                )
-                full_name = f"{base_name}.{attr_name}"
-                self._process_api_call(full_name, args, kwargs)
-                # Then pop that attribute access out of the chain
-                return cst.Name(
-                    value=base_name,
-                )
-            case _:
-                pass
-
-        return updated_node
-
-    def _process_api_call(
-        self, func_name: str, args: list[Any], kwargs: dict[str, Any]
-    ) -> None:
-        """Process an API call for a matched function name."""
-        for registry, registered_funcs in self.registries.items():
-            if func_name in registered_funcs:
-                self.api_handler.send_api_request(
-                    registry,
-                    func_name,
-                    args,
-                    kwargs,
-                )
-                self._caught_calls |= {func_name}
-
-
-def _get_full_name(node: cst.CSTNode) -> str:
-    """Recursively get the full name of a function or method call."""
-    match node:
-        case cst.Attribute(
-            value=base_name,
-            attr=cst.Name(value=attr_name),
-        ):
-            # If the node is an attribute, we need to repeat to get the full name
-            return f"{_get_full_name(base_name)}.{attr_name}"
-        case cst.Name(value=name):
-            # If the node is a name, we return the name
-            assert isinstance(name, str), "Name node should have a string value"
-            return name
-        case _:  # pragma: no cover
-            raise AssertionError(
-                "Node does not match expected pattern. "
-                "This should not happen, please report this as a bug."
-            )  # pragma: no cover

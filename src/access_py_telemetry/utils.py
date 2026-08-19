@@ -43,10 +43,10 @@ def build_endpoints(
 
 ENDPOINTS = {
     register.endpoint.replace("/", "_"): register.endpoint
-    for register in build_endpoints(config)
+    for register in build_endpoints(config["registries"])
 }
 
 REGISTRIES = {
     register.endpoint.replace("/", "_"): register.items
-    for register in build_endpoints(config)
+    for register in build_endpoints(config["registries"])
 }

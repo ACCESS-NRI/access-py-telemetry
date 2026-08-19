@@ -1,54 +1,61 @@
-intake:
-  catalog:
-    - esm_datastore.search
-    - DfFileCatalog.search
-    - DfFileCatalog.__getitem__
-    - esm_datastore.to_dataset_dict
-    - esm_datastore.to_dask
-    - esm_datastore.df
-    - DfFileCatalog.df
-    - esm_datastore.unique
-    - esm_datastore.nunique
-    - DfFileCatalog.unique
-    - DfFileCatalog.nunique
-    - DfFileCatalog.keys
-    - DfFileCatalog.to_source_dict
-    - DfFileCatalog.to_source
-    - intake.cat.access_nri
-    - AliasedESMCatalog.search
-    - AliasedDataframeCatalog.search
-    - AliasedDataframeCatalog.__getitem__
-    - AliasedESMCatalog.to_dataset_dict
-    - AliasedESMCatalog.to_dask
-    - AliasedESMCatalog.df
-    - AliasedDataframeCatalog.df
-    - AliasedESMCatalog.unique
-    - AliasedESMCatalog.nunique
-    - AliasedDataframeCatalog.unique
-    - AliasedDataframeCatalog.nunique
-    - AliasedDataframeCatalog.keys
-    - AliasedDataframeCatalog.to_source_dict
-    - AliasedDataframeCatalog.to_source
-  datastore:
-    - use_datastore
-    - open_esm_datastore
-    - BaseBuilder.build
-    - BaseBuilder.save
-    - AccessOm2Builder.build
-    - AccessOm2Builder.save
-    - AccessOm3Builder.build
-    - AccessOm3Builder.save
-    - AccessCm2Builder.build
-    - AccessCm2Builder.save
-    - Mom6Builder.build
-    - Mom6Builder.save
-    - AccessEsm15Builder.build
-    - AccessEsm15Builder.save
-    - AccessCm2Builder.build
-    - AccessCm2Builder.save
-    - ROMSBuilder.build
-    - ROMSBuilder.save
-  cli:
-    - metadata_validate
-    - metadata_template
-    - use_esm_datatore
+# Telemetry configuration.
+#
+#   registries:  the registered call names, grouped by service. This is the source
+#                of truth for ENDPOINTS / REGISTRIES (see utils.py) and is walked by
+#                build_endpoints.
+
+registries:
+  intake:
+    catalog:
+      - esm_datastore.search
+      - DfFileCatalog.search
+      - DfFileCatalog.__getitem__
+      - esm_datastore.to_dataset_dict
+      - esm_datastore.to_dask
+      - esm_datastore.df
+      - DfFileCatalog.df
+      - esm_datastore.unique
+      - esm_datastore.nunique
+      - DfFileCatalog.unique
+      - DfFileCatalog.nunique
+      - DfFileCatalog.keys
+      - DfFileCatalog.to_source_dict
+      - DfFileCatalog.to_source
+      - intake.cat.access_nri
+      - AliasedESMCatalog.search
+      - AliasedDataframeCatalog.search
+      - AliasedDataframeCatalog.__getitem__
+      - AliasedESMCatalog.to_dataset_dict
+      - AliasedESMCatalog.to_dask
+      - AliasedESMCatalog.df
+      - AliasedDataframeCatalog.df
+      - AliasedESMCatalog.unique
+      - AliasedESMCatalog.nunique
+      - AliasedDataframeCatalog.unique
+      - AliasedDataframeCatalog.nunique
+      - AliasedDataframeCatalog.keys
+      - AliasedDataframeCatalog.to_source_dict
+      - AliasedDataframeCatalog.to_source
+    datastore:
+      - use_datastore
+      - open_esm_datastore
+      - BaseBuilder.build
+      - BaseBuilder.save
+      - AccessOm2Builder.build
+      - AccessOm2Builder.save
+      - AccessOm3Builder.build
+      - AccessOm3Builder.save
+      - AccessCm2Builder.build
+      - AccessCm2Builder.save
+      - Mom6Builder.build
+      - Mom6Builder.save
+      - AccessEsm15Builder.build
+      - AccessEsm15Builder.save
+      - AccessCm2Builder.build
+      - AccessCm2Builder.save
+      - ROMSBuilder.build
+      - ROMSBuilder.save
+    cli:
+      - metadata_validate
+      - metadata_template
+      - use_esm_datatore

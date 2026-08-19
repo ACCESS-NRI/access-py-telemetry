@@ -13,12 +13,11 @@ import sys
 import uuid
 import warnings
 from functools import wraps
-from pathlib import Path, PurePosixPath
+from pathlib import PurePosixPath
 from typing import Any, Callable, Iterable, Type
 
 import httpx
 import pydantic
-import yaml
 
 from .utils import ENDPOINTS
 
@@ -28,9 +27,6 @@ if sys.version_info >= (3, 11):
     from typing import Self
 else:
     from typing_extensions import Self
-
-with open(Path(__file__).parent / "config.yaml", "r") as f:
-    config = yaml.safe_load(f)
 
 NRI_USER = True
 

@@ -1,8 +1,13 @@
 # Telemetry configuration.
 #
+# Two sections:
 #   registries:  the registered call names, grouped by service. This is the source
 #                of truth for ENDPOINTS / REGISTRIES (see utils.py) and is walked by
-#                build_endpoints.
+#                build_endpoints exactly as the whole file used to be.
+#   transitions: the type-flow knowledge the AST interpreter uses to resolve chained
+#                calls (see ast.py). A registered method's successor node type defaults
+#                to *self* (the same node), so only type-*changing* edges and the
+#                generators that mint a node from a module path / factory are listed here.
 
 registries:
   intake:
@@ -59,3 +64,21 @@ registries:
       - metadata_validate
       - metadata_template
       - use_esm_datatore
+
+transitions:
+  # Source patterns that mint a node from a module path or factory function.
+  # (Constructors `ClassName(...)` are handled implicitly by the interpreter and
+  # need no entry here.)
+  generators:
+    intake.cat.access_nri: DfFileCatalog
+    open_esm_datastore: esm_datastore
+
+  # Method edges that CHANGE the node type. Anything registered but not listed here
+  # defaults to returning *self*, which is correct for `.search(...)` chains and
+  # harmless for terminal methods (`.to_dask()` etc.) whose result carries no
+  # registered methods.
+  overrides:
+    DfFileCatalog:
+      __getitem__: esm_datastore
+    AliasedDataframeCatalog:
+      __getitem__: AliasedESMCatalog

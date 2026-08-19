@@ -1,19 +1,16 @@
 #!/usr/bin/env python
 # type: ignore
 
-"""Tests for the AST module"""
-
-import sys
-from unittest.mock import MagicMock, patch
-from unittest.mock import call as unittest_call
+"""Tests for the AST module (typed transition interpreter)."""
 
 import libcst as cst
 import pytest
 
 from access_py_telemetry.ast import (
-    CallListener,
-    ChainSimplifier,
+    Dotted,
+    Node,
     capture_registered_calls,
+    interpret,
     strip_magic,
 )
 
@@ -23,9 +20,24 @@ class MockInfo:
         self.raw_cell = raw_cell
 
 
-def test_ast_instance_method():
-    mock_info = MockInfo()
-    mock_info.raw_cell = """
+def events_for(code, registry, ns=None):
+    """Interpret ``code`` against a single-service ``registry`` and return events."""
+    tree = cst.parse_module(code)
+    return interpret(tree, {"mock": set(registry)}, ns or {})
+
+
+def caught(code, registry, ns=None):
+    """The set of registered names detected in ``code``."""
+    return {event.name for event in events_for(code, registry, ns)}
+
+
+def test_same_cell_instantiation():
+    """
+    The motivating case: an object is instantiated in the *same* cell as the
+    method call. `pre_run_cell` fires before execution, so the namespace can't
+    help — the type is resolved statically from the constructor. No namespace.
+    """
+    code = """
 class MyClass:
     def func(self):
         self.set_var = set()
@@ -34,86 +46,33 @@ class MyClass:
         pass
 
 instance = MyClass()
-mycall = instance.func()
-
+instance.func()
 instance.uncaught_func()
 """
-
-    f = sys._getframe()
-    exec(mock_info.raw_cell, globals(), f.f_locals)
-    mock_user_ns = f.f_locals
-
-    mock_registry = {"mock": ["MyClass.func"]}
-
-    mock_api_handler = MagicMock()
-
-    tree = cst.parse_module(mock_info.raw_cell)
-    reducer = ChainSimplifier(mock_user_ns, mock_registry, mock_api_handler)
-    reduced_tree = tree.visit(reducer)
-    wrapper = cst.MetadataWrapper(reduced_tree)
-
-    visitor = CallListener(mock_user_ns, mock_registry, mock_api_handler)
-    wrapper.visit(visitor)
-
-    visitor._caught_calls |= reducer._caught_calls
-
-    assert visitor._caught_calls == {
-        "MyClass.func",
-    }
-
-    assert "MyClass.uncaught_func" not in visitor._caught_calls
+    assert caught(code, ["MyClass.func"]) == {"MyClass.func"}
+    assert "MyClass.uncaught_func" not in caught(code, ["MyClass.func"])
 
 
-def test_ast_bare_function_args_kwargs():
-    mock_info = MockInfo()
-    mock_info.raw_cell = """
-def registered_func(*args, **kwargs):
-    return None
-
-x = 1
-y = "a_str"
-z = ["a", "list", 0, "random", ["values", "and", "types"]]
-
-registered_func(x, y=y, z=z)
-
-"""
-
-    called_with = (
-        "mock",
-        "registered_func",
-        [1],
-        {"y": "a_str", "z": ["a", "list", 0, "random", ["values", "and", "types"]]},
-    )
-
-    f = sys._getframe()
-    exec(mock_info.raw_cell, globals(), f.f_locals)
-    mock_user_ns = f.f_locals
-
-    mock_registry = {"mock": ["registered_func"]}
-
-    mock_api_handler = MagicMock()
-
-    tree = cst.parse_module(mock_info.raw_cell)
-    reducer = ChainSimplifier(mock_user_ns, mock_registry, mock_api_handler)
-    reduced_tree = tree.visit(reducer)
-    wrapper = cst.MetadataWrapper(reduced_tree)
-
-    visitor = CallListener(mock_user_ns, mock_registry, mock_api_handler)
-    wrapper.visit(visitor)
-
-    visitor._caught_calls |= reducer._caught_calls
-
-    assert visitor._caught_calls == {
-        "registered_func",
-    }
-
-    mock_api_handler.send_api_request.assert_called_once_with(*called_with)
+def test_instance_method_from_namespace():
+    """An object created in an earlier cell is typed via the namespace fallback."""
+    code = "instance.func()\n"
+    ns = {"instance": type("MyClass", (), {})()}
+    assert caught(code, ["MyClass.func"], ns) == {"MyClass.func"}
 
 
-def test_ast_unparse_bare_function():
-    mock_info = MockInfo()
-    mock_info.raw_cell = """
+def test_bare_function_args_kwargs():
+    code = "registered_func(x, y=y, z=z)\n"
+    ns = {"x": 1, "y": "a_str", "z": ["a", "list", 0, "random", ["values"]]}
+    events = events_for(code, ["registered_func"], ns)
+    assert len(events) == 1
+    event = events[0]
+    assert event.name == "registered_func"
+    assert event.args == [1]
+    assert event.kwargs == {"y": "a_str", "z": ["a", "list", 0, "random", ["values"]]}
 
+
+def test_unparse_bare_function():
+    code = """
 import pandas as pd
 
 def registered_func():
@@ -122,50 +81,22 @@ def registered_func():
 def registered_func2(x):
     return None
 
-
 def unregistered_func():
     return None
 
 registered_func()
 unregistered_func()
-
 registered_func2(pd.DataFrame())
-
 """
-
-    f = sys._getframe()
-    exec(mock_info.raw_cell, globals(), f.f_locals)
-    mock_user_ns = f.f_locals
-
-    mock_registry = {"mock": ["registered_func", "registered_func2"]}
-
-    mock_api_handler = MagicMock()
-
-    tree = cst.parse_module(mock_info.raw_cell)
-    reducer = ChainSimplifier(mock_user_ns, mock_registry, mock_api_handler)
-    reduced_tree = tree.visit(reducer)
-    wrapper = cst.MetadataWrapper(reduced_tree)
-
-    visitor = CallListener(mock_user_ns, mock_registry, mock_api_handler)
-    wrapper.visit(visitor)
-
-    visitor._caught_calls |= reducer._caught_calls
-
-    assert visitor._caught_calls == {
+    assert caught(code, ["registered_func", "registered_func2"]) == {
         "registered_func",
         "registered_func2",
     }
 
-    assert "uncaught_func" not in visitor._caught_calls
 
-
-def test_ast_aliased_function():
-    """
-    This will require more sophisticated analysis to catch aliased functions. Maybe
-    we can look at this eventually
-    """
-    mock_info = MockInfo()
-    mock_info.raw_cell = """
+def test_aliased_function():
+    """A function rebound to a new name is dealiased through the binding env."""
+    code = """
 def registered_func():
     return None
 
@@ -173,113 +104,41 @@ reg_func = registered_func
 
 reg_func()
 """
-
-    f = sys._getframe()
-    exec(mock_info.raw_cell, globals(), f.f_locals)
-    mock_user_ns = f.f_locals
-
-    mock_registry = {"mock": ["registered_func"]}
-
-    mock_api_handler = MagicMock()
-
-    tree = cst.parse_module(mock_info.raw_cell)
-    reducer = ChainSimplifier(mock_user_ns, mock_registry, mock_api_handler)
-    reduced_tree = tree.visit(reducer)
-    wrapper = cst.MetadataWrapper(reduced_tree)
-
-    visitor = CallListener(mock_user_ns, mock_registry, mock_api_handler)
-    wrapper.visit(visitor)
-
-    visitor._caught_calls |= reducer._caught_calls
-
-    assert visitor._caught_calls == {
-        "registered_func",
-    }
+    assert caught(code, ["registered_func"]) == {"registered_func"}
 
 
-def test_ast_instantiate_and_call():
-    """
-    Need to figure out how to catch the instantiation of a class and then call a method
-    on it. Not needed yet
-    """
-    mock_info = MockInfo()
-    mock_info.raw_cell = """
+def test_instantiate_and_call():
+    code = "MyClass().func()\n"
+    ns = {"MyClass": type("MyClass", (), {})}
+    assert caught(code, ["MyClass.func"], ns) == {"MyClass.func"}
+
+
+def test_instantiate_and_call_same_cell():
+    code = """
 class MyClass:
     def func(self):
         self.set_var = set()
 
 MyClass().func()
-
 """
-
-    f = sys._getframe()
-    exec(mock_info.raw_cell, globals(), f.f_locals)
-    mock_user_ns = f.f_locals
-
-    mock_registry = {"mock": ["MyClass.func"]}
-
-    mock_api_handler = MagicMock()
-
-    tree = cst.parse_module(mock_info.raw_cell)
-    reducer = ChainSimplifier(mock_user_ns, mock_registry, mock_api_handler)
-    reduced_tree = tree.visit(reducer)
-    wrapper = cst.MetadataWrapper(reduced_tree)
-
-    visitor = CallListener(mock_user_ns, mock_registry, mock_api_handler)
-    wrapper.visit(visitor)
-
-    visitor._caught_calls |= reducer._caught_calls
-
-    assert visitor._caught_calls == {
-        "MyClass.func",
-    }
+    assert caught(code, ["MyClass.func"]) == {"MyClass.func"}
 
 
-def test_ast_class_method():
-    """
-    Class methods don't work with the CallListener yet
-    """
-    mock_info = MockInfo()
-    mock_info.raw_cell = """
+def test_class_method():
+    code = """
 class MyClass:
     @classmethod
     def func(cls):
         cls.set_var = set()
 
 MyClass.func()
-
 """
-
-    f = sys._getframe()
-    exec(mock_info.raw_cell, globals(), f.f_locals)
-    mock_user_ns = f.f_locals
-
-    mock_registry = {"mock": ["MyClass.func"]}
-
-    mock_api_handler = MagicMock()
-
-    tree = cst.parse_module(mock_info.raw_cell)
-    reducer = ChainSimplifier(mock_user_ns, mock_registry, mock_api_handler)
-    reduced_tree = tree.visit(reducer)
-    wrapper = cst.MetadataWrapper(reduced_tree)
-
-    visitor = CallListener(mock_user_ns, mock_registry, mock_api_handler)
-    wrapper.visit(visitor)
-
-    visitor._caught_calls |= reducer._caught_calls
-
-    assert visitor._caught_calls == {
-        "MyClass.func",
-    }
+    assert caught(code, ["MyClass.func"]) == {"MyClass.func"}
 
 
-def test_ast_indexing():
-    mock_info = MockInfo()
-    mock_info.raw_cell = """
+def test_indexing():
+    code = """
 class MyClass:
-    def func(self):
-        self.set_var = set()
-
     def __getitem__(self, key):
         return [1, 2, 3]
 
@@ -287,108 +146,38 @@ instance = MyClass()
 mycall = instance['some_item']
 
 l = [1, 2, 3]
-
 l[0]
-
 """
-
-    f = sys._getframe()
-    exec(mock_info.raw_cell, globals(), f.f_locals)
-    mock_user_ns = f.f_locals
-
-    mock_registry = {"mock": ["MyClass.__getitem__", "list.__getitem__"]}
-
-    mock_api_handler = MagicMock()
-
-    tree = cst.parse_module(mock_info.raw_cell)
-    reducer = ChainSimplifier(mock_user_ns, mock_registry, mock_api_handler)
-    reduced_tree = tree.visit(reducer)
-    wrapper = cst.MetadataWrapper(reduced_tree)
-
-    visitor = CallListener(mock_user_ns, mock_registry, mock_api_handler)
-    wrapper.visit(visitor)
-
-    visitor._caught_calls |= reducer._caught_calls
-
-    assert visitor._caught_calls == {
+    assert caught(code, ["MyClass.__getitem__", "list.__getitem__"]) == {
         "MyClass.__getitem__",
         "list.__getitem__",
     }
 
 
-def test_ast_nested_function():
-    mock_info = MockInfo()
-    mock_info.raw_cell = """
+def test_nested_function():
+    code = """
 import os
 
-os.path.join("some","paths")
-
+os.path.join("some", "paths")
 """
-
-    f = sys._getframe()
-    exec(mock_info.raw_cell, globals(), f.f_locals)
-    mock_user_ns = f.f_locals
-
-    mock_registry = {"mock": ["os.path.join"]}
-
-    mock_api_handler = MagicMock()
-
-    tree = cst.parse_module(mock_info.raw_cell)
-    reducer = ChainSimplifier(mock_user_ns, mock_registry, mock_api_handler)
-    reduced_tree = tree.visit(reducer)
-    wrapper = cst.MetadataWrapper(reduced_tree)
-
-    visitor = CallListener(mock_user_ns, mock_registry, mock_api_handler)
-    wrapper.visit(visitor)
-
-    visitor._caught_calls |= reducer._caught_calls
-
-    assert visitor._caught_calls == {
-        "os.path.join",
-    }
+    assert caught(code, ["os.path.join"]) == {"os.path.join"}
 
 
-def test_ast_aliased_module():
-    mock_info = MockInfo()
-    mock_info.raw_cell = """
+def test_aliased_module():
+    code = """
 import os as operating_system
 
-operating_system.path.join("some","paths")
-
+operating_system.path.join("some", "paths")
 """
-
-    f = sys._getframe()
-    exec(mock_info.raw_cell, globals(), f.f_locals)
-    mock_user_ns = f.f_locals
-
-    mock_registry = {"mock": ["os.path.join"]}
-
-    mock_api_handler = MagicMock()
-
-    tree = cst.parse_module(mock_info.raw_cell)
-    reducer = ChainSimplifier(mock_user_ns, mock_registry, mock_api_handler)
-    reduced_tree = tree.visit(reducer)
-    wrapper = cst.MetadataWrapper(reduced_tree)
-
-    visitor = CallListener(mock_user_ns, mock_registry, mock_api_handler)
-    wrapper.visit(visitor)
-
-    visitor._caught_calls |= reducer._caught_calls
-
-    assert visitor._caught_calls == {
-        "os.path.join",
-    }
+    assert caught(code, ["os.path.join"]) == {"os.path.join"}
 
 
 @pytest.mark.parametrize(
-    "raw_cell, called_with",
+    "raw_cell, expected",
     [
         (
             """
 class MyClass:
-    def func(self):
-        self.set_var = set()
-
     def __getitem__(self, key):
         return [1, 2, 3]
 
@@ -398,14 +187,11 @@ search_str = 'some_item'
 
 mycall = instance[search_str]
 """,
-            ("mock", "MyClass.__getitem__", ["'some_item'"], {}),
+            ("MyClass.__getitem__", ["'some_item'"], {}),
         ),
         (
             """
 class MyClass:
-    def func(self):
-        self.set_var = set()
-
     def __getitem__(self, key):
         return [1, 2, 3]
 
@@ -413,300 +199,130 @@ instance = MyClass()
 
 mycall = instance['directly_used_string']
 """,
-            ("mock", "MyClass.__getitem__", ["'directly_used_string'"], {}),
+            ("MyClass.__getitem__", ["'directly_used_string'"], {}),
         ),
         (
             """
-l = [0,1,2,3]
+l = [0, 1, 2, 3]
 
 MAGIC_NUMBER = 1
 
 l[MAGIC_NUMBER]
 """,
-            ("mock", "list.__getitem__", ["1"], {}),
+            ("list.__getitem__", ["1"], {}),
         ),
     ],
 )
-def test_ast_aliased_index(raw_cell, called_with):
+def test_indexing_args(raw_cell, expected):
     """
-    We need to make sure that we properly catch, eg.
-    ```python
-    experiment_name = 'my_expt'
-    esm_ds = catalog[experiment_name]
-    ```
-    and record the call to catalog.__getitem_ with an argument of 'my_expt'
-    rather than the string identifier of the variable holding it, `experiment_name`
+    An index argument is recorded as its value (`'my_expt'`), whether written
+    directly or held in a same-cell variable — never the variable identifier.
     """
-
-    mock_info = MockInfo()
-    mock_info.raw_cell = raw_cell
-    f = sys._getframe()
-    exec(mock_info.raw_cell, globals(), f.f_locals)
-    mock_user_ns = f.f_locals
-
-    mock_registry = {"mock": ["MyClass.__getitem__", "list.__getitem__"]}
-
-    mock_api_handler = MagicMock()
-
-    tree = cst.parse_module(mock_info.raw_cell)
-    reducer = ChainSimplifier(mock_user_ns, mock_registry, mock_api_handler)
-    reduced_tree = tree.visit(reducer)
-    wrapper = cst.MetadataWrapper(reduced_tree)
-
-    visitor = CallListener(mock_user_ns, mock_registry, mock_api_handler)
-    wrapper.visit(visitor)
-
-    visitor._caught_calls |= reducer._caught_calls
-
-    mock_api_handler.send_api_request.assert_called_once_with(*called_with)
+    events = events_for(raw_cell, ["MyClass.__getitem__", "list.__getitem__"])
+    assert len(events) == 1
+    event = events[0]
+    assert (event.name, event.args, event.kwargs) == expected
 
 
 def test_import_catalog():
-    mock_info = MockInfo()
-    mock_info.raw_cell = """
+    code = """
 import intake
 intake.cat.access_nri
-
 """
-
-    f = sys._getframe()
-    exec(mock_info.raw_cell, globals(), f.f_locals)
-    mock_user_ns = f.f_locals
-
-    mock_registry = {"mock": ["intake.cat.access_nri"]}
-
-    mock_api_handler = MagicMock()
-
-    tree = cst.parse_module(mock_info.raw_cell)
-    reducer = ChainSimplifier(mock_user_ns, mock_registry, mock_api_handler)
-    reduced_tree = tree.visit(reducer)
-    wrapper = cst.MetadataWrapper(reduced_tree)
-
-    visitor = CallListener(mock_user_ns, mock_registry, mock_api_handler)
-    wrapper.visit(visitor)
-
-    visitor._caught_calls |= reducer._caught_calls
-
-    assert visitor._caught_calls == {
-        "intake.cat.access_nri",
-    }
+    assert caught(code, ["intake.cat.access_nri"]) == {"intake.cat.access_nri"}
 
 
 def test_import_assign_catalog():
-    mock_info = MockInfo()
-    mock_info.raw_cell = """
+    code = """
 import intake
 cat = intake.cat.access_nri
-
 """
+    assert caught(code, ["intake.cat.access_nri"]) == {"intake.cat.access_nri"}
 
-    f = sys._getframe()
-    exec(mock_info.raw_cell, globals(), f.f_locals)
-    mock_user_ns = f.f_locals
 
-    mock_registry = {"mock": ["intake.cat.access_nri"]}
-
-    mock_api_handler = MagicMock()
-
-    tree = cst.parse_module(mock_info.raw_cell)
-    reducer = ChainSimplifier(mock_user_ns, mock_registry, mock_api_handler)
-    reduced_tree = tree.visit(reducer)
-    wrapper = cst.MetadataWrapper(reduced_tree)
-
-    visitor = CallListener(mock_user_ns, mock_registry, mock_api_handler)
-    wrapper.visit(visitor)
-
-    visitor._caught_calls |= reducer._caught_calls
-
-    assert visitor._caught_calls == {
-        "intake.cat.access_nri",
-    }
+def test_import_assign_catalog_types_variable():
+    """Assigning the generator result binds the variable's node type."""
+    tree = cst.parse_module("import intake\ncat = intake.cat.access_nri\n")
+    interp_events = interpret(tree, {"mock": {"intake.cat.access_nri"}}, {})
+    assert len(interp_events) == 1
 
 
 def test_index_return_self_and_chained_call():
     """
-    Test that we can catch a chained cal where the first call is an indexing operation
-    that returns self, and then a method is called on it. This is to test that the ChainSimplifier
-    correctly simplifies the chain and allows us to catch both calls.
-
+    A chained call whose first link is an index that returns self, then a method
+    on the result. The __getitem__ defaults to returning self, so both are caught.
     """
-    mock_info = MockInfo()
-    mock_info.raw_cell = """
+    code = """
 class MyClass:
     def __getitem__(self, key):
-        # Just return self - this is a dummy method for a test
         return self
 
     def compute(self, *args, **kwargs):
-        # Just return a random number - this is a dummy method for a test
         import random
         return random.random()
 
 c = MyClass()
 random_num = c['some_item'].compute()
-#random_num = MyClass()['some_item'].compute()
-
 """
-
-    f = sys._getframe()
-    exec(mock_info.raw_cell, globals(), f.f_locals)
-    mock_user_ns = f.f_locals
-
-    mock_registry = {"mock": ["MyClass.__getitem__", "MyClass.compute"]}
-
-    mock_api_handler = MagicMock()
-
-    tree = cst.parse_module(mock_info.raw_cell)
-    reducer = ChainSimplifier(mock_user_ns, mock_registry, mock_api_handler)
-    reduced_tree = tree.visit(reducer)
-    wrapper = cst.MetadataWrapper(reduced_tree)
-
-    visitor = CallListener(mock_user_ns, mock_registry, mock_api_handler)
-    wrapper.visit(visitor)
-
-    visitor._caught_calls |= reducer._caught_calls
-
-    assert visitor._caught_calls == {
+    assert caught(code, ["MyClass.__getitem__", "MyClass.compute"]) == {
         "MyClass.__getitem__",
         "MyClass.compute",
     }
 
 
 def test_instantiate_index_and_chained_call():
-    """
-    Same as above, except this time we haven't stored the instance of MyClass in
-    an intermediate variable
-    """
-    mock_info = MockInfo()
-    mock_info.raw_cell = """
+    code = """
 class MyClass:
     def __getitem__(self, key):
-        # Just return self - this is a dummy method for a test
         return self
 
     def compute(self, *args, **kwargs):
-        # Just return a random number - this is a dummy method for a test
         import random
         return random.random()
 
 random_num = MyClass()['some_item'].compute()
-
 """
-
-    f = sys._getframe()
-    exec(mock_info.raw_cell, globals(), f.f_locals)
-    mock_user_ns = f.f_locals
-
-    mock_registry = {"mock": ["MyClass.__getitem__", "MyClass.compute"]}
-
-    mock_api_handler = MagicMock()
-
-    tree = cst.parse_module(mock_info.raw_cell)
-    reducer = ChainSimplifier(mock_user_ns, mock_registry, mock_api_handler)
-    reduced_tree = tree.visit(reducer)
-    wrapper = cst.MetadataWrapper(reduced_tree)
-
-    visitor = CallListener(mock_user_ns, mock_registry, mock_api_handler)
-    wrapper.visit(visitor)
-
-    visitor._caught_calls |= reducer._caught_calls
-
-    assert visitor._caught_calls == {
+    assert caught(code, ["MyClass.__getitem__", "MyClass.compute"]) == {
         "MyClass.__getitem__",
         "MyClass.compute",
     }
 
 
 def test_import_and_index_into_catalog():
-    mock_info = MockInfo()
-    mock_info.raw_cell = """
+    """intake.cat.access_nri['x'] catches the generator and the __getitem__ edge."""
+    code = """
 import intake
 try:
     intake.cat.access_nri['some_item']
 except Exception:
     pass
-
 """
-
-    mock_type_result = MagicMock()
-    mock_type_result = type("esm_datastore", (), {})()
-
-    f = sys._getframe()
-    exec(mock_info.raw_cell, globals(), f.f_locals)
-    mock_user_ns = f.f_locals
-
-    mock_registry = {"mock": ["intake.cat.access_nri", "DfFileCatalog.__getitem__"]}
-
-    mock_api_handler = MagicMock()
-
-    tree = cst.parse_module(mock_info.raw_cell)
-    with patch("access_py_telemetry.ast.eval", return_value=mock_type_result):
-        reducer = ChainSimplifier(mock_user_ns, mock_registry, mock_api_handler)
-        reduced_tree = tree.visit(reducer)
-    wrapper = cst.MetadataWrapper(reduced_tree)
-
-    visitor = CallListener(mock_user_ns, mock_registry, mock_api_handler)
-    wrapper.visit(visitor)
-
-    visitor._caught_calls |= reducer._caught_calls
-
-    assert visitor._caught_calls == {
+    registry = ["intake.cat.access_nri", "DfFileCatalog.__getitem__"]
+    assert caught(code, registry) == {
         "intake.cat.access_nri",
         "DfFileCatalog.__getitem__",
     }
 
 
 def test_import_stringindex_and_search():
-    mock_info = MockInfo()
-    mock_info.raw_cell = """
+    code = """
 import intake
 try:
     intake.cat.access_nri['some_item'].search(file_id='xyz').to_dask()
 except Exception:
     pass
-
 """
-
-    mock_type_result = MagicMock()
-    mock_type_result = type("esm_datastore", (), {})()
-
-    f = sys._getframe()
-    exec(mock_info.raw_cell, globals(), f.f_locals)
-    mock_user_ns = f.f_locals
-
-    mock_registry = {
-        "mock": [
-            "intake.cat.access_nri",
-            "DfFileCatalog.__getitem__",
-            "esm_datastore.search",
-            "esm_datastore.to_dask",
-        ]
-    }
-
-    mock_api_handler = MagicMock()
-
-    tree = cst.parse_module(mock_info.raw_cell)
-    with patch("access_py_telemetry.ast.eval", return_value=mock_type_result):
-        reducer = ChainSimplifier(mock_user_ns, mock_registry, mock_api_handler)
-        reduced_tree = tree.visit(reducer)
-    wrapper = cst.MetadataWrapper(reduced_tree)
-
-    visitor = CallListener(mock_user_ns, mock_registry, mock_api_handler)
-    wrapper.visit(visitor)
-
-    visitor._caught_calls |= reducer._caught_calls
-
-    assert visitor._caught_calls == {
+    registry = [
         "intake.cat.access_nri",
         "DfFileCatalog.__getitem__",
         "esm_datastore.search",
         "esm_datastore.to_dask",
-    }
+    ]
+    assert caught(code, registry) == set(registry)
 
 
 def test_import_stringindex_save_and_search():
-    mock_info = MockInfo()
-    mock_info.raw_cell = """
+    code = """
 import intake
 try:
     datastore = intake.cat.access_nri["1deg_era5_iaf"]
@@ -715,139 +331,88 @@ try:
     ).to_dask()
 except Exception:
     pass
-
 """
-
-    mock_type_result = MagicMock()
-    mock_type_result = type("esm_datastore", (), {})()
-
-    f = sys._getframe()
-    exec(mock_info.raw_cell, globals(), f.f_locals)
-    mock_user_ns = f.f_locals
-
-    mock_registry = {
-        "mock": [
-            "intake.cat.access_nri",
-            "DfFileCatalog.__getitem__",
-            "esm_datastore.search",
-            "esm_datastore.to_dask",
-        ]
-    }
-
-    mock_api_handler = MagicMock()
-
-    tree = cst.parse_module(mock_info.raw_cell)
-    with patch("access_py_telemetry.ast.eval", return_value=mock_type_result):
-        reducer = ChainSimplifier(mock_user_ns, mock_registry, mock_api_handler)
-        reduced_tree = tree.visit(reducer)
-    wrapper = cst.MetadataWrapper(reduced_tree)
-
-    visitor = CallListener(mock_user_ns, mock_registry, mock_api_handler)
-    wrapper.visit(visitor)
-
-    visitor._caught_calls |= reducer._caught_calls
-
-    assert visitor._caught_calls == {
+    registry = [
         "intake.cat.access_nri",
         "DfFileCatalog.__getitem__",
         "esm_datastore.search",
         "esm_datastore.to_dask",
-    }
+    ]
+    assert caught(code, registry) == set(registry)
 
 
 def test_import_varindex_and_search():
-    mock_info = MockInfo()
-    mock_info.raw_cell = """
+    code = """
 import intake
 source = 'some_item'
 try:
     intake.cat.access_nri[source].search(file_id='xyz').to_dask()
 except Exception:
     pass
-
 """
-
-    mock_type_result = MagicMock()
-    mock_type_result = type("esm_datastore", (), {})()
-
-    f = sys._getframe()
-    exec(mock_info.raw_cell, globals(), f.f_locals)
-    mock_user_ns = f.f_locals
-
-    mock_registry = {
-        "mock": [
-            "intake.cat.access_nri",
-            "DfFileCatalog.__getitem__",
-            "esm_datastore.search",
-            "esm_datastore.to_dask",
-        ]
-    }
-
-    mock_api_handler = MagicMock()
-
-    tree = cst.parse_module(mock_info.raw_cell)
-    with patch("access_py_telemetry.ast.eval", return_value=mock_type_result):
-        reducer = ChainSimplifier(mock_user_ns, mock_registry, mock_api_handler)
-        reduced_tree = tree.visit(reducer)
-    wrapper = cst.MetadataWrapper(reduced_tree)
-
-    visitor = CallListener(mock_user_ns, mock_registry, mock_api_handler)
-    wrapper.visit(visitor)
-
-    visitor._caught_calls |= reducer._caught_calls
-
-    assert visitor._caught_calls == {
+    registry = [
         "intake.cat.access_nri",
         "DfFileCatalog.__getitem__",
         "esm_datastore.search",
         "esm_datastore.to_dask",
-    }
+    ]
+    assert caught(code, registry) == set(registry)
 
 
-@pytest.mark.xfail
-def test_import_catalog_traverse_imports():
-    """
-    This fails because the CallListener doesn't traverse the imports yet. We can
-    do this using importlib and then parsing what importlib imports too I think,
-    but let's save that for another day
-    """
-    mock_info = MockInfo()
-    mock_info.raw_cell = """
-import intake
-intake.cat.access_nri
+def test_implicit_boolean_conversion():
+    """`arr = np.array(...)` is untypeable statically, so `arr` falls back to the
+    namespace, where its runtime type is `ndarray`."""
+    code = """
+arr = np.array([0, 2, 3])
+arr.mean()
 """
+    ns = {"np": type("np_module", (), {})(), "arr": type("ndarray", (), {})()}
+    assert caught(code, ["ndarray.mean"], ns) == {"ndarray.mean"}
 
-    f = sys._getframe()
-    exec(mock_info.raw_cell, globals(), f.f_locals)
-    mock_user_ns = f.f_locals
 
-    mock_registry = {"mock": ["intake.catalog.Catalog.__init__"]}
+def test_chained_function_call():
+    """
+    The most 'real life' test: a chained call is caught with the calls recorded
+    in the right order.
+    """
+    code = """
+class esm_datastore:
+    def search(self, **kwargs):
+        return self
 
-    mock_api_handler = MagicMock()
+    def to_dask(self, **kwargs) -> None:
+        return None
 
-    tree = cst.parse_module(mock_info.raw_cell)
-    reducer = ChainSimplifier(mock_user_ns, mock_registry, mock_api_handler)
-    reduced_tree = tree.visit(reducer)
-    wrapper = cst.MetadataWrapper(reduced_tree)
+esm_ds = esm_datastore()
 
-    visitor = CallListener(mock_user_ns, mock_registry, mock_api_handler)
-    wrapper.visit(visitor)
+time = '2023-01-01'
 
-    visitor._caught_calls |= reducer._caught_calls
+ds = esm_ds.search(
+    file_id='xyz'
+).search(
+    start_date=time
+).to_dask(
+    xarray_open_kwargs = {'chunks' : 'auto'}
+)
+"""
+    registry = ["esm_datastore.search", "esm_datastore.to_dask"]
+    events = events_for(code, registry)
 
-    assert visitor._caught_calls == {
-        "intake.cat.access_nri",
+    assert {e.name for e in events} == {
+        "esm_datastore.search",
+        "esm_datastore.to_dask",
     }
+    ordered = [(e.name, e.args, e.kwargs) for e in events]
+    assert ordered == [
+        ("esm_datastore.search", [], {"file_id": "'xyz'"}),
+        ("esm_datastore.search", [], {"start_date": "2023-01-01"}),
+        ("esm_datastore.to_dask", [], {"xarray_open_kwargs": {"chunks": "auto"}}),
+    ]
 
 
 def test_match_ipython_magic():
-    """
-    This test is to check that the IPython magic commands are not caught by the
-    CallListener. This is important because we don't want to send telemetry for
-    IPython magic commands.
-    """
-    mock_info = MockInfo()
-    mock_info.raw_cell = r"""
+    """IPython magic lines are stripped before parsing."""
+    raw_cell = r"""
 !ls
 %%timeit
 class MyClass:
@@ -879,7 +444,7 @@ MyClass.func(instance)
 
     """
 
-    parsed_w_magic = strip_magic(mock_info.raw_cell)
+    parsed_w_magic = strip_magic(raw_cell)
     parsed_wo_magic = strip_magic(python_code)
 
     assert parsed_w_magic == parsed_wo_magic
@@ -890,237 +455,34 @@ MyClass.func(instance)
 
 
 def test_parse_invalid_code():
+    """Invalid code must not raise out of the hook."""
     mock_info = MockInfo()
     mock_info.raw_cell = """
 class MyClass:
     def func(self):
         self.set_var = set()
-
-    def uncaught_func(self, *args, **kwargs):
-        pass
 
 instance = MyClass()
 mycall = instance.func()
 
     instance.uncaught_func()
-
-
 """
-
     capture_registered_calls(mock_info)
 
     mock_info = MockInfo()
     mock_info.raw_cell = """
-class MyClass:
-    def func(self):
-        self.set_var = set()
-
-    def uncaught_func(self, *args, **kwargs):
-        pass
-
 @instance = MyClass()
 1mycall = instance.func()
-
-    instance.uncaught_func()
-
-
 """
-
     capture_registered_calls(mock_info)
 
 
-def test_implicit_boolean_conversion():
-    mock_info = MockInfo()
-    mock_info.raw_cell = """
-
-import numpy as np
-
-arr = np.array([0, 2, 3])
-
-arr.mean()
-
-"""
-
-    f = sys._getframe()
-    exec(mock_info.raw_cell, globals(), f.f_locals)
-    mock_user_ns = f.f_locals
-
-    mock_registry = {"mock": ["ndarray.mean"]}
-
-    mock_api_handler = MagicMock()
-
-    tree = cst.parse_module(mock_info.raw_cell)
-    reducer = ChainSimplifier(mock_user_ns, mock_registry, mock_api_handler)
-    reduced_tree = tree.visit(reducer)
-    wrapper = cst.MetadataWrapper(reduced_tree)
-
-    visitor = CallListener(mock_user_ns, mock_registry, mock_api_handler)
-    wrapper.visit(visitor)
-
-    visitor._caught_calls |= reducer._caught_calls
-
-    assert visitor._caught_calls == {"ndarray.mean"}
+def test_none_cell_is_noop():
+    """A cell with no source is a no-op."""
+    assert capture_registered_calls(MockInfo(raw_cell=None)) is None
 
 
-def test_ChainSimplifier_instance_to_classname():
-    """
-    Test that the ChainSimplifier correctly converts instance method calls to class names.
-    """
-    mock_info = MockInfo()
-    mock_info.raw_cell = """
-class MyClass:
-    def __init__(self):
-        self.a = "value"
-
-    def func1(self):
-        return self
-
-    def func2(self):
-        return self
-
-instance = MyClass()
-instance.func1().func2() # These should be popped out by the ChainSimplifier
-
-instance.a
-"""
-
-    transformed_cell = """
-class MyClass:
-    def __init__(self):
-        self.a = "value"
-
-    def func1(self):
-        return self
-
-    def func2(self):
-        return self
-
-instance = MyClass()
-MyClass # These should be popped out by the ChainSimplifier
-
-MyClass.a
-"""
-    f = sys._getframe()
-    exec(mock_info.raw_cell, globals(), f.f_locals)
-    mock_user_ns = f.f_locals
-
-    mock_registry = {"mock": ["ndarray.mean"]}
-
-    mock_api_handler = MagicMock()
-
-    tree = cst.parse_module(mock_info.raw_cell)
-    reducer = ChainSimplifier(mock_user_ns, mock_registry, mock_api_handler)
-    reduced_tree = tree.visit(reducer)
-
-    code = reduced_tree.code
-
-    assert code == transformed_cell
-
-
-def test_ChainSimplifier_indexing():
-    mock_info = MockInfo()
-    mock_info.raw_cell = """
-l = [1, 2, 3]
-
-l[0]
-    """
-
-    transformed_cell = """
-l = [1, 2, 3]
-
-list.__getitem__(0)
-    """
-
-    f = sys._getframe()
-    exec(mock_info.raw_cell, globals(), f.f_locals)
-    mock_user_ns = f.f_locals
-
-    mock_registry = {"mock": ["ndarray.mean"]}
-
-    mock_api_handler = MagicMock()
-
-    tree = cst.parse_module(mock_info.raw_cell)
-    reducer = ChainSimplifier(mock_user_ns, mock_registry, mock_api_handler)
-    reduced_tree = tree.visit(reducer)
-
-    code = reduced_tree.code
-
-    assert code == transformed_cell
-
-
-@pytest.mark.parametrize(
-    "raw_cell, called_with",
-    [
-        (
-            """
-# Mock the esm_datastore instead of creating it from a file
-class esm_datastore:
-    def search(self, **kwargs):
-        return self
-
-    def to_dask(self, **kwargs) -> None:
-        return None
-
-esm_ds = esm_datastore()
-
-time = '2023-01-01'
-
-ds = esm_ds.search(
-    file_id='xyz'
-).search(
-    start_date=time
-).to_dask(
-    xarray_open_kwargs = {'chunks' : 'auto'}
-)
-""",
-            [
-                ("mock", "esm_datastore.search", [], {"file_id": "'xyz'"}),
-                ("mock", "esm_datastore.search", [], {"start_date": "2023-01-01"}),
-                (
-                    "mock",
-                    "esm_datastore.to_dask",
-                    [],
-                    {"xarray_open_kwargs": {"chunks": "auto"}},
-                ),
-            ],
-        ),
-    ],
-)
-def test_chained_function_call(raw_cell, called_with):
-    """
-    This is going to be our most 'real life' test. We want to make sure that
-    something like `esm_datastore.search(file_id='xyz').search(start_date=time).to_dask()`
-    is properly caught and the calls are registered correctly - and in the right
-    order.
-    """
-
-    mock_info = MockInfo()
-    mock_info.raw_cell = raw_cell
-    f = sys._getframe()
-    exec(mock_info.raw_cell, globals(), f.f_locals)
-    mock_user_ns = f.f_locals
-
-    mock_registry = {"mock": ["esm_datastore.search", "esm_datastore.to_dask"]}
-
-    mock_api_handler = MagicMock()
-
-    tree = cst.parse_module(mock_info.raw_cell)
-    reducer = ChainSimplifier(mock_user_ns, mock_registry, mock_api_handler)
-    reduced_tree = tree.visit(reducer)
-    wrapper = cst.MetadataWrapper(reduced_tree)
-
-    visitor = CallListener(mock_user_ns, mock_registry, mock_api_handler)
-    wrapper.visit(visitor)
-
-    visitor._caught_calls |= reducer._caught_calls
-
-    assert visitor._caught_calls == {
-        "esm_datastore.search",
-        "esm_datastore.to_dask",
-    }
-
-    assert mock_api_handler.send_api_request.call_count == 3
-
-    mock_api_handler.send_api_request.assert_has_calls(
-        [unittest_call(*call) for call in called_with],
-    )
+def test_abstract_values_smoke():
+    """The abstract value dataclasses are importable and comparable."""
+    assert Node("esm_datastore") == Node("esm_datastore")
+    assert Dotted("os.path") != Dotted("os")

@@ -50,3 +50,13 @@ REGISTRIES = {
     register.endpoint.replace("/", "_"): register.items
     for register in build_endpoints(config["registries"])
 }
+
+# Type-flow knowledge used by the AST interpreter (see ast.py). See config.yaml for
+# the semantics: GENERATORS mint a node from a module path / factory function, and
+# TYPE_OVERRIDES record the method edges that *change* node type (everything else
+# defaults to returning self).
+_transitions: dict[str, Any] = config.get("transitions", {}) or {}
+
+GENERATORS: dict[str, str] = _transitions.get("generators", {}) or {}
+
+TYPE_OVERRIDES: dict[str, dict[str, str]] = _transitions.get("overrides", {}) or {}

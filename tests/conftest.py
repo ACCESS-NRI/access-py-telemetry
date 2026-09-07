@@ -1,8 +1,9 @@
 # type: ignore
 from pytest import fixture
+
 from access_py_telemetry.api import ApiHandler, ProductionToggle
-from access_py_telemetry.utils import ENDPOINTS
 from access_py_telemetry.registry import TelemetryRegister
+from access_py_telemetry.utils import ENDPOINTS
 
 # Capture the pristine class-level defaults once, before any test can mutate
 # them. These are restored around every test by the autouse fixture below.

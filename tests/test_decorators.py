@@ -1,10 +1,12 @@
 # type: ignore
 
+import asyncio
+
+import pytest
+
+from access_py_telemetry.api import ApiHandler
 from access_py_telemetry.decorators import ipy_register_func, register_func
 from access_py_telemetry.registry import TelemetryRegister
-from access_py_telemetry.api import ApiHandler
-import pytest
-import asyncio
 
 
 def test_ipy_register_func(api_handler, reset_telemetry_register):

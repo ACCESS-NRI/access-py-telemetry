@@ -3,10 +3,11 @@ Copyright 2022 ACCESS-NRI and contributors. See the top-level COPYRIGHT file for
 SPDX-License-Identifier: Apache-2.0
 """
 
-from typing import Any
-import yaml
-from pathlib import Path
 from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any
+
+import yaml
 
 with open(Path(__file__).parent / "config.yaml", "r") as f:
     config = yaml.safe_load(f)

@@ -1,8 +1,9 @@
-from typing import Callable, Any, Iterable
-from .registry import TelemetryRegister
+from collections.abc import Callable, Iterable
 from functools import wraps
+from typing import Any
 
 from .api import ApiHandler, send_in_loop
+from .registry import TelemetryRegister
 
 
 def ipy_register_func(

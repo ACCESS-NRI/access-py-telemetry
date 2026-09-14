@@ -1,11 +1,12 @@
 """Console script for access_py_telemetry."""
 
-import access_py_telemetry
-from typing import Sequence
-from shutil import copy2
 import argparse
 import filecmp
+from collections.abc import Sequence
 from pathlib import Path
+from shutil import copy2
+
+import access_py_telemetry
 
 PACKAGE_ROOT = Path(access_py_telemetry.__file__).parent
 

@@ -1,6 +1,7 @@
 # type: ignore
-import pytest
 from unittest import mock
+
+import pytest
 
 from access_py_telemetry.cli import configure_telemetry
 

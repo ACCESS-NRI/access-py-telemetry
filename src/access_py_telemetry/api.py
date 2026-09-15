@@ -12,9 +12,10 @@ import re
 import sys
 import uuid
 import warnings
+from collections.abc import Callable, Iterable
 from functools import wraps
 from pathlib import Path, PurePosixPath
-from typing import Any, Callable, Iterable, Type
+from typing import Any
 
 import httpx
 import pydantic
@@ -58,14 +59,14 @@ class ProductionToggle:
     PRODUCTION_URL = "https://reporting.access-nri-store.cloud.edu.au/api/"
     STAGING_URL = "https://reporting-dev.access-nri-store.cloud.edu.au/api/"
 
-    def __new__(cls: Type[Self]) -> Self:
+    def __new__(cls: type[Self]) -> Self:
         if not cls._instance:
             cls._instance = super().__new__(cls)
         return cls._instance
 
     def __init__(self) -> None:
         if hasattr(self, "initialized"):
-            return None
+            return
         self.initialized = True
 
     @property
@@ -84,7 +85,6 @@ class ProductionToggle:
         else:
             ApiHandler().server_url = self.STAGING_URL
         self._production = prod
-        return None
 
     def debug(self) -> Callable[..., Any]:
         """
@@ -146,7 +146,7 @@ class ApiHandler:
     _request_timeout = None
     _mproc_override = None
 
-    def __new__(cls: Type[Self], *args: Any, **kwargs: Any) -> Self:
+    def __new__(cls: type[Self], *args: Any, **kwargs: Any) -> Self:
         if cls._instance is None:
             cls._instance = super().__new__(cls)
         return cls._instance
@@ -156,7 +156,7 @@ class ApiHandler:
         server_url: str = "https://reporting.access-nri-store.cloud.edu.au",
     ) -> None:
         if hasattr(self, "_initialized"):
-            return None
+            return
         self._initialized = True
         self._server_url = server_url
 
@@ -173,7 +173,6 @@ class ApiHandler:
         if service_name not in self.endpoints:
             raise KeyError(f"Endpoint for '{service_name}' not found")
         self._extra_fields[service_name] = fields
-        return None
 
     @pydantic.validate_call
     def set_headers(
@@ -192,7 +191,6 @@ class ApiHandler:
             if service_name not in self.endpoints:
                 raise KeyError(f"Endpoint for '{service_name}' not found")
             self.headers[service_name] = headers
-        return None
 
     @pydantic.validate_call
     def clear_headers(self, service_names: str | Iterable[str] | None = None) -> None:
@@ -208,7 +206,6 @@ class ApiHandler:
             if service_name not in self.endpoints:
                 raise KeyError(f"Endpoint for '{service_name}' not found")
             self.headers[service_name] = {}
-        return None
 
     @property
     def server_url(self) -> str:
@@ -235,7 +232,6 @@ class ApiHandler:
                 category=UserWarning,
             )
         self._server_url = url
-        return None
 
     @property
     def pop_fields(self) -> dict[str, list[str]]:
@@ -252,14 +248,14 @@ class ApiHandler:
         """
         if timeout is None:
             self._request_timeout = None
-            return None
+            return
         if not isinstance(timeout, (int, float)):
             raise TypeError("Timeout must be a number")
         elif timeout <= 0 or not isinstance(timeout, (int, float)):
             raise ValueError("Timeout must be a positive number")
 
         self._request_timeout = timeout
-        return None
+        return
 
     @pydantic.validate_call
     def remove_fields(self, service: str, fields: str | Iterable[str]) -> None:
@@ -325,7 +321,6 @@ class ApiHandler:
             self._request_timeout,
             self._mproc_override,
         )
-        return None
 
     @TOGGLE.debug()
     def send_failure_api_request(
@@ -377,7 +372,6 @@ class ApiHandler:
             self._request_timeout,
             self._mproc_override,
         )
-        return None
 
     def _get_endpoints(self, service_name: str) -> str:
         """
@@ -469,7 +463,7 @@ class SessionID:
 
     def __init__(self) -> None:
         if hasattr(self, "initialized"):
-            return None
+            return
         self.initialized = True
 
     def __get__(self, obj: object, objtype: type | None = None) -> str:
@@ -535,7 +529,6 @@ async def send_telemetry(
                 warnings.warn(
                     f"Request failed: {e}", category=RuntimeWarning, stacklevel=2
                 )
-    return None
 
 
 def send_in_loop(
@@ -587,7 +580,7 @@ def send_in_loop(
         )
     else:
         loop.create_task(send_telemetry(endpoint, telemetry_data, telemetry_headers))
-        return None
+        return
 
 
 def _run_event_loop(
@@ -692,7 +685,6 @@ def _run_in_proc(
             category=RuntimeWarning,
             stacklevel=2,
         )
-    return None
 
 
 def _format_endpoint(server_url: str, endpoint: str) -> str:

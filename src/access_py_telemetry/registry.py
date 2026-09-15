@@ -3,9 +3,13 @@ Copyright 2022 ACCESS-NRI and contributors. See the top-level COPYRIGHT file for
 SPDX-License-Identifier: Apache-2.0
 """
 
-from typing import Type, TypeVar, Iterator, Callable, Any
-import pydantic
 import copy
+from collections.abc import Callable, Iterator
+from typing import Any, TypeVar
+
+import pydantic
+from typing_extensions import Self
+
 from .utils import REGISTRIES
 
 T = TypeVar("T", bound="TelemetryRegister")
@@ -15,8 +19,6 @@ class RegisterWarning(UserWarning):
     """
     Custom warning class for the TelemetryRegister class.
     """
-
-    pass
 
 
 class TelemetryRegister:
@@ -32,14 +34,14 @@ class TelemetryRegister:
 
     _instances: dict[str, "TelemetryRegister"] = {}
 
-    def __new__(cls: Type[T], service: str) -> T:
+    def __new__(cls, service: str) -> Self:
         if cls._instances.get(service) is None:
             cls._instances[service] = super().__new__(cls)
         return cls._instances[service]  # type: ignore
 
     def __init__(self, service: str) -> None:
         if hasattr(self, "_initialized"):
-            return None
+            return
         self._initialized = True
         self.service = service
         self.registry = copy.deepcopy(REGISTRIES.get(service, set()))
@@ -83,7 +85,6 @@ class TelemetryRegister:
                 self.registry.add(func)
             else:
                 self.registry.add(func.__name__)
-        return None
 
     @pydantic.validate_call
     def deregister(self, *func_names: str | Callable[..., Any]) -> None:
@@ -106,4 +107,3 @@ class TelemetryRegister:
                 self.registry.remove(func)
             else:
                 self.registry.remove(func.__name__)
-        return None

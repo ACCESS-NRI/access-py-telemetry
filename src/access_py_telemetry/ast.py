@@ -65,7 +65,7 @@ def capture_registered_calls(info: ExecutionInfo) -> None:
     code: str | None = info.raw_cell
 
     if code is None:
-        return None
+        return
 
     code = strip_magic(code)
 
@@ -75,11 +75,11 @@ def capture_registered_calls(info: ExecutionInfo) -> None:
         api_handler.send_failure_api_request(
             "intake/failed-telemetry", code, "intake/failed-telemetry"
         )
-        return None
+        return
 
     _run_tree(tree)
 
-    return None
+    return
 
 
 def _run_tree(tree: cst.Module) -> None:  # pragma: no cover
@@ -224,10 +224,10 @@ class CallListener(cst.CSTVisitor):
         full_name = self._get_full_name(node)
         match full_name, parent:
             case str(), cst.Call():
-                return None
+                return
             case str(), _:
                 self._process_api_call(full_name, [], {})
-        return None
+        return
 
     def visit_Call(self, node: cst.Call) -> None:
         """
